@@ -38,17 +38,30 @@ init();
 const orderLabels={'platinum':'Platinum Loca','gold-1':'Gold 1','gold-2':'Gold 2','gold-3':'Gold 3','gold-4':'Gold 4','alt-1':'Alt Kat 1','alt-2':'Alt Kat 2','alt-3':'Alt Kat 3'};
 const statusLabels={new:'Yeni',preparing:'Hazırlanıyor',delivered:'Teslim edildi',cancelled:'İptal'};
 let orderMonitorId=null,knownOrderIds=null,monitorBusy=false,audioContext=null,notifySound=false;
+// Üç tur, iki tonlu sipariş alarmı. Tarayıcı sesini açmak için butona basılmalıdır.
 function beep(){
  if(!notifySound||!audioContext)return;
  try{
   if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
-  const osc=audioContext.createOscillator(),gain=audioContext.createGain();
-  osc.type='sine';osc.frequency.setValueAtTime(880,audioContext.currentTime);
-  gain.gain.setValueAtTime(.0001,audioContext.currentTime);
-  gain.gain.exponentialRampToValueAtTime(.14,audioContext.currentTime+.02);
-  gain.gain.exponentialRampToValueAtTime(.0001,audioContext.currentTime+.27);
-  osc.connect(gain);gain.connect(audioContext.destination);
-  osc.start();osc.stop(audioContext.currentTime+.29);
+  const start=audioContext.currentTime+0.04;
+  const tones=[
+   [0.00,740,0.20],[0.23,988,0.26],
+   [0.68,740,0.20],[0.91,988,0.26],
+   [1.36,740,0.20],[1.59,988,0.34]
+  ];
+  for(const [delay,freq,length] of tones){
+   const at=start+delay;
+   const osc=audioContext.createOscillator();
+   const amp=audioContext.createGain();
+   osc.type='square';
+   osc.frequency.setValueAtTime(freq,at);
+   amp.gain.setValueAtTime(0.0001,at);
+   amp.gain.linearRampToValueAtTime(0.20,at+0.018);
+   amp.gain.setValueAtTime(0.20,at+Math.max(0.025,length-0.06));
+   amp.gain.exponentialRampToValueAtTime(0.0001,at+length);
+   osc.connect(amp);amp.connect(audioContext.destination);
+   osc.start(at);osc.stop(at+length+0.01);
+  }
  }catch(e){console.warn('Bildirim sesi:',e)}
 }
 const soundButton=$('#enableOrderSound');
