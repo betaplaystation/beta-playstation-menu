@@ -4,6 +4,7 @@ const conf = window.BETA_CONFIG || {};
 const configured = !!(conf.supabaseUrl && conf.supabaseAnonKey);
 const db = configured && window.supabase ? window.supabase.createClient(conf.supabaseUrl,conf.supabaseAnonKey) : null;
 const state = {categories:[],products:[],category:'all',query:''};
+window.betaMenuState=state;
 const symbols = {'☕':'☕','🧊':'🧊','🍟':'🍟','🍰':'🍰'};
 const safe = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = n => new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY',maximumFractionDigits:2}).format(Number(n)||0);
@@ -16,7 +17,7 @@ function render(){
  $('#sectionInfo').textContent=filtered.length+' ürün';$('#count').textContent=filtered.length+' sonuç';
  $('#products').innerHTML=filtered.length?filtered.map(p=>{
  const img=p.image_url ? `<img loading="lazy" src="${safe(p.image_url)}" alt="${safe(p.name)}" onerror="this.remove()">` : safe(iconFor(p.category_id));
- return `<article class="product"><div class="product-img">${img}</div><div class="product-body"><div class="product-title">${safe(p.name)}</div><div class="product-desc">${safe(p.description||'')}</div><div class="product-bottom"><span class="price">${money(p.price)}</span><span class="pill">● Menüde</span></div></div></article>`
+ return `<article class="product"><div class="product-img">${img}</div><div class="product-body"><div class="product-title">${safe(p.name)}</div><div class="product-desc">${safe(p.description||'')}</div><div class="product-bottom"><span class="price">${money(p.price)}</span><span class="pill">● Menüde</span>${new URLSearchParams(location.search).has('loca')?`<button class="add-cart" data-add-to-cart="${safe(p.id)}">+ Sepete</button>`:''}</div></div></article>`
  }).join(''):'<div class="empty">Bu kategoride gösterilecek ürün bulunamadı.</div>';
  document.querySelectorAll('.tab').forEach(el=>el.addEventListener('click',()=>{state.category=el.dataset.id;render()}));
 }

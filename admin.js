@@ -12,7 +12,7 @@ async function authorized(user){if(!user)return false;const {data,error}=await d
 async function init(){if(!db){$('#setupAlert').classList.remove('hidden');$('#loginForm').querySelector('button').disabled=true;return}try{const {data:{user}}=await db.auth.getUser();if(user){if(await authorized(user)){showDashboard(user.email);await reload()}else{await db.auth.signOut();message('Bu hesaba yönetici yetkisi verilmemiş. README.md dosyasındaki SQL adımını tamamlayın.',true,'#loginMsg')}}}catch(e){message(e.message,true,'#loginMsg')}}
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!db)return;const form=e.currentTarget;btnBusy(form,true);message('Giriş kontrol ediliyor...',false,'#loginMsg');try{const {data,error}=await db.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#password').value});if(error)throw error;if(!(await authorized(data.user))){await db.auth.signOut();throw new Error('Bu kullanıcı yönetici olarak tanımlı değil.')}showDashboard(data.user.email);message('',false,'#loginMsg');await reload()}catch(err){message(err.message,true,'#loginMsg')}finally{btnBusy(form,false)}});
 $('#signout').addEventListener('click',async()=>{await db.auth.signOut();showLogin();$('#password').value=''});
-document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['products','categories','info'].forEach(v=>$('#'+v+'View').classList.toggle('hidden',v!==b.dataset.view));$('#pageTitle').textContent=({products:'Ürün yönetimi',categories:'Kategori yönetimi',info:'Menü bilgileri'})[b.dataset.view]}));
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['orders','products','categories','info'].forEach(v=>$('#'+v+'View').classList.toggle('hidden',v!==b.dataset.view));if(b.dataset.view==='orders')loadOrders();$('#pageTitle').textContent=({orders:'Gelen siparişler',products:'Ürün yönetimi',categories:'Kategori yönetimi',info:'Menü bilgileri'})[b.dataset.view]}));
 async function reload(){try{const [c,p]=await Promise.all([db.from('categories').select('*').order('sort_order'),db.from('products').select('*').order('sort_order')]);if(c.error)throw c.error;if(p.error)throw p.error;store.categories=c.data;store.products=p.data;render();message('')}catch(e){message('Veri alınamadı: '+e.message,true)}}
 function render(){
  const cur=$('#productCategory').value;
@@ -34,3 +34,27 @@ $('#categoryForm').addEventListener('submit',async e=>{e.preventDefault();const 
 async function deleteCategory(id){const c=store.categories.find(x=>x.id===id);if(!c||!confirm('"'+c.name+'" silinsin mi? İçindeki ürünler varsa silme işlemi engellenir.'))return;const {error}=await db.from('categories').delete().eq('id',id);if(error)message('Kategori silinemedi: Önce bu kategorideki ürünleri taşıyın veya silin. '+error.message,true);else{await reload();message('Kategori silindi.')}}
 $('#menuUrl').textContent=new URL('index.html',location.href).href;$('#copyLink').onclick=async()=>{const url=new URL('index.html',location.href).href;try{await navigator.clipboard.writeText(url);message('Menü linki kopyalandı.')}catch(e){message('Link: '+url)}};
 init();
+
+const orderLabels={'platinum':'Platinum Loca','gold-1':'Gold 1','gold-2':'Gold 2','gold-3':'Gold 3','gold-4':'Gold 4','alt-1':'Alt Kat 1','alt-2':'Alt Kat 2','alt-3':'Alt Kat 3'};
+const statusLabels={new:'Yeni',preparing:'Hazırlanıyor',delivered:'Teslim edildi',cancelled:'İptal'};
+async function loadOrders(){
+ if(!db||$('#ordersView').classList.contains('hidden')||$('#dashboard').classList.contains('hidden'))return;
+ const el=$('#ordersList');
+ const {data,error}=await db.from('orders').select('id,loca_code,status,total,note,created_at,order_items(product_name,qty,unit_price)').order('created_at',{ascending:false}).limit(100);
+ if(error){el.textContent='Siparişler alınamadı: '+error.message+' (siparis-kurulum.sql çalıştırıldı mı?)';return}
+ el.replaceChildren();
+ if(!data.length){el.textContent='Henüz sipariş yok.';return}
+ for(const o of data){
+  const card=document.createElement('article');card.className='order-card';
+  const title=document.createElement('h3');title.textContent=(orderLabels[o.loca_code]||o.loca_code)+' · '+money(o.total);card.append(title);
+  const when=document.createElement('p');when.className='muted';when.textContent=new Date(o.created_at).toLocaleString('tr-TR')+' · #'+o.id.slice(0,8).toUpperCase();card.append(when);
+  for(const item of o.order_items||[]){const d=document.createElement('p');d.textContent=item.qty+' × '+item.product_name;card.append(d)}
+  if(o.note){const d=document.createElement('p');d.textContent='Not: '+o.note;card.append(d)}
+  const sel=document.createElement('select');sel.setAttribute('aria-label','Sipariş durumu');
+  for(const [key,label] of Object.entries(statusLabels)){const opt=document.createElement('option');opt.value=key;opt.textContent=label;sel.append(opt)}sel.value=o.status;
+  sel.onchange=async()=>{sel.disabled=true;const {error}=await db.from('orders').update({status:sel.value}).eq('id',o.id);if(error)message(error.message,true);sel.disabled=false;await loadOrders()};
+  card.append(sel);el.append(card);
+ }
+}
+$('#refreshOrders').addEventListener('click',loadOrders);
+setInterval(loadOrders,10000);
