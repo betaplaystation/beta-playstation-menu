@@ -2,6 +2,6 @@
 // Buraya ASLA service_role veya secret anahtarı koymayın.
 window.BETA_CONFIG = {
   supabaseUrl: '',
-  supabaseAnonKey: '',
+  supabaseAnonKey: 'sb_publishable_ZEd-VYWVRBmlXbLct5ihlQ_PDePq_A2',
   currency: 'TRY'
 };
