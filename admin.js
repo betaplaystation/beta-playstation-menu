@@ -6,8 +6,8 @@ const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const message=(text,isError=false,sel='#globalMsg')=>{const el=$(sel);el.textContent=text;el.classList.toggle('error',isError)};
 const btnBusy=(form,busy)=>{form.querySelector('button[type="submit"]').disabled=busy};
-function showDashboard(email){$('#loginPanel').classList.add('hidden');$('#dashboard').classList.remove('hidden');$('#accountLabel').textContent='Giriş yapan: '+email}
-function showLogin(){ $('#dashboard').classList.add('hidden');$('#loginPanel').classList.remove('hidden') }
+function showDashboard(email){$('#loginPanel').classList.add('hidden');$('#dashboard').classList.remove('hidden');$('#accountLabel').textContent='Giriş yapan: '+email; startOrderMonitor()}
+function showLogin(){ $('#dashboard').classList.add('hidden');$('#loginPanel').classList.remove('hidden'); stopOrderMonitor() }
 async function authorized(user){if(!user)return false;const {data,error}=await db.from('admin_users').select('user_id').eq('user_id',user.id).maybeSingle();if(error)throw error;return !!data}
 async function init(){if(!db){$('#setupAlert').classList.remove('hidden');$('#loginForm').querySelector('button').disabled=true;return}try{const {data:{user}}=await db.auth.getUser();if(user){if(await authorized(user)){showDashboard(user.email);await reload()}else{await db.auth.signOut();message('Bu hesaba yönetici yetkisi verilmemiş. README.md dosyasındaki SQL adımını tamamlayın.',true,'#loginMsg')}}}catch(e){message(e.message,true,'#loginMsg')}}
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!db)return;const form=e.currentTarget;btnBusy(form,true);message('Giriş kontrol ediliyor...',false,'#loginMsg');try{const {data,error}=await db.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#password').value});if(error)throw error;if(!(await authorized(data.user))){await db.auth.signOut();throw new Error('Bu kullanıcı yönetici olarak tanımlı değil.')}showDashboard(data.user.email);message('',false,'#loginMsg');await reload()}catch(err){message(err.message,true,'#loginMsg')}finally{btnBusy(form,false)}});
@@ -37,6 +37,68 @@ init();
 
 const orderLabels={'platinum':'Platinum Loca','gold-1':'Gold 1','gold-2':'Gold 2','gold-3':'Gold 3','gold-4':'Gold 4','alt-1':'Alt Kat 1','alt-2':'Alt Kat 2','alt-3':'Alt Kat 3'};
 const statusLabels={new:'Yeni',preparing:'Hazırlanıyor',delivered:'Teslim edildi',cancelled:'İptal'};
+let orderMonitorId=null,knownOrderIds=null,monitorBusy=false,audioContext=null,notifySound=false;
+function beep(){
+ if(!notifySound||!audioContext)return;
+ try{
+  if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
+  const osc=audioContext.createOscillator(),gain=audioContext.createGain();
+  osc.type='sine';osc.frequency.setValueAtTime(880,audioContext.currentTime);
+  gain.gain.setValueAtTime(.0001,audioContext.currentTime);
+  gain.gain.exponentialRampToValueAtTime(.14,audioContext.currentTime+.02);
+  gain.gain.exponentialRampToValueAtTime(.0001,audioContext.currentTime+.27);
+  osc.connect(gain);gain.connect(audioContext.destination);
+  osc.start();osc.stop(audioContext.currentTime+.29);
+ }catch(e){console.warn('Bildirim sesi:',e)}
+}
+const soundButton=$('#enableOrderSound');
+soundButton.addEventListener('click',async()=>{
+ try{
+  if(notifySound){notifySound=false;soundButton.textContent='🔔 Sipariş sesini aç';return}
+  audioContext=audioContext||new (window.AudioContext||window.webkitAudioContext)();
+  await audioContext.resume();notifySound=true;soundButton.textContent='🔊 Sipariş sesi açık';beep();
+ }catch(e){message('Tarayıcı sesi başlatamadı: '+e.message,true)}
+});
+async function checkNewOrders(){
+ if(!db||$('#dashboard').classList.contains('hidden')||monitorBusy)return;
+ monitorBusy=true;
+ try{
+  const {data,error}=await db.from('orders').select('id,status,loca_code').order('created_at',{ascending:false}).limit(100);
+  if(error)throw error;
+  const nextIds=new Set((data||[]).map(o=>o.id));
+  if(knownOrderIds!==null){
+   const newlyArr=(data||[]).filter(o=>o.status==='new'&&!knownOrderIds.has(o.id));
+   if(newlyArr.length){
+    beep();
+    const names=[...new Set(newlyArr.map(o=>orderLabels[o.loca_code]||o.loca_code))].join(', ');
+    $('#newOrderAlert').textContent='🔔 '+newlyArr.length+' yeni sipariş! '+names;
+    $('#newOrderAlert').classList.remove('hidden');
+    document.title='🔔 '+newlyArr.length+' yeni sipariş | Beta Playstation';
+    if(!$('#ordersView').classList.contains('hidden'))await loadOrders();
+   }
+  }
+  knownOrderIds=nextIds;
+ }catch(e){console.warn('Sipariş kontrolü başarısız:',e)}
+ finally{monitorBusy=false}
+}
+function startOrderMonitor(){
+ if(orderMonitorId!==null)return;
+ knownOrderIds=null;checkNewOrders();
+ orderMonitorId=setInterval(()=>{checkNewOrders();if(!$('#ordersView').classList.contains('hidden'))loadOrders()},5000);
+}
+function stopOrderMonitor(){
+ if(orderMonitorId!==null)clearInterval(orderMonitorId);
+ orderMonitorId=null;knownOrderIds=null;notifySound=false;
+ soundButton.textContent='🔔 Sipariş sesini aç';
+ $('#newOrderAlert').classList.add('hidden');document.title='Beta Playstation | Yönetim Paneli';
+}
+$('#newOrderAlert').addEventListener('click',()=>{
+ const ordersBtn=document.querySelector('[data-view="orders"]');ordersBtn.click();
+ $('#newOrderAlert').classList.add('hidden');document.title='Beta Playstation | Yönetim Paneli';
+});
+window.addEventListener('focus',()=>{checkNewOrders();if(!$('#ordersView').classList.contains('hidden'))loadOrders()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewOrders();if(!$('#ordersView').classList.contains('hidden'))loadOrders()}});
+
 async function loadOrders(){
  if(!db||$('#ordersView').classList.contains('hidden')||$('#dashboard').classList.contains('hidden'))return;
  const el=$('#ordersList');
@@ -57,4 +119,4 @@ async function loadOrders(){
  }
 }
 $('#refreshOrders').addEventListener('click',loadOrders);
-setInterval(loadOrders,10000);
+// Sipariş takibi giriş yapılınca otomatik başlatılır.
