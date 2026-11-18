@@ -9,7 +9,7 @@
  // Kasa QR sadece menü/fiyat gösterir; bu bağlantıdan sipariş alınmaz.
  if (code === 'kasa') {
   $('#locaBanner').classList.remove('hidden');
-  $('#locaBanner').textContent = '📍 KASA MENÜSÜ · Sipariş için kasa personeline başvurun';
+  $('#locaBanner').textContent = 'Sipariş için personele başvurun';
   $('#cartPanel').classList.add('hidden');
   return;
  }
