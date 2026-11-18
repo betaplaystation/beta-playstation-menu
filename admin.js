@@ -12,8 +12,8 @@ async function authorized(user){if(!user)return false;const {data,error}=await d
 async function init(){if(!db){$('#setupAlert').classList.remove('hidden');$('#loginForm').querySelector('button').disabled=true;return}try{const {data:{user}}=await db.auth.getUser();if(user){if(await authorized(user)){showDashboard(user.email);await reload()}else{await db.auth.signOut();message('Bu hesaba yönetici yetkisi verilmemiş. README.md dosyasındaki SQL adımını tamamlayın.',true,'#loginMsg')}}}catch(e){message(e.message,true,'#loginMsg')}}
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!db)return;const form=e.currentTarget;btnBusy(form,true);message('Giriş kontrol ediliyor...',false,'#loginMsg');try{const {data,error}=await db.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#password').value});if(error)throw error;if(!(await authorized(data.user))){await db.auth.signOut();throw new Error('Bu kullanıcı yönetici olarak tanımlı değil.')}showDashboard(data.user.email);message('',false,'#loginMsg');await reload()}catch(err){message(err.message,true,'#loginMsg')}finally{btnBusy(form,false)}});
 $('#signout').addEventListener('click',async()=>{await db.auth.signOut();showLogin();$('#password').value=''});
-document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['orders','products','categories','info'].forEach(v=>$('#'+v+'View').classList.toggle('hidden',v!==b.dataset.view));if(b.dataset.view==='orders')loadOrders();$('#pageTitle').textContent=({orders:'Gelen siparişler',products:'Ürün yönetimi',categories:'Kategori yönetimi',info:'Menü bilgileri'})[b.dataset.view]}));
-async function reload(){try{const [c,p]=await Promise.all([db.from('categories').select('*').order('sort_order'),db.from('products').select('*').order('sort_order')]);if(c.error)throw c.error;if(p.error)throw p.error;store.categories=c.data;store.products=p.data;render();message('')}catch(e){message('Veri alınamadı: '+e.message,true)}}
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));['orders','products','stock','categories','info'].forEach(v=>$('#'+v+'View').classList.toggle('hidden',v!==b.dataset.view));if(b.dataset.view==='orders')loadOrders();if(b.dataset.view==='stock')reload();$('#pageTitle').textContent=({orders:'Gelen siparişler',products:'Ürün yönetimi',stock:'Stok yönetimi',categories:'Kategori yönetimi',info:'Menü bilgileri'})[b.dataset.view]}));
+async function reload(){try{const [c,p]=await Promise.all([db.from('categories').select('*').order('sort_order'),db.from('products').select('*').order('sort_order')]);if(c.error)throw c.error;if(p.error)throw p.error;store.categories=c.data;store.products=p.data;render();renderStock();message('')}catch(e){message('Veri alınamadı: '+e.message,true)}}
 function render(){
  const cur=$('#productCategory').value;
  $('#productCategory').innerHTML='<option value="">Kategori seçin</option>'+store.categories.map(c=>`<option value="${safe(c.id)}">${safe(c.icon||'')} ${safe(c.name)}</option>`).join('');if(store.categories.some(c=>c.id===cur))$('#productCategory').value=cur;
@@ -133,3 +133,49 @@ async function loadOrders(){
 }
 $('#refreshOrders').addEventListener('click',loadOrders);
 // Sipariş takibi giriş yapılınca otomatik başlatılır.
+
+
+// STOK YÖNETİMİ: tüm stok değişiklikleri sunucudaki, yönetici doğrulamalı RPC üzerinden yapılır.
+function stockMessage(text,isError=false){const el=$('#stockMsg');if(!el)return;el.textContent=text;el.classList.toggle('error',isError)}
+function renderStock(){
+ const target=$('#stockList');if(!target)return;
+ if(!store.products.length){target.textContent='Henüz ürün bulunmuyor.';return}
+ target.innerHTML=store.products.map(p=>{
+  const tracked=p.stock_tracking_enabled===true,qty=Number(p.stock_quantity)||0;
+  const state=!tracked?'Takip kapalı':qty===0?'Tükendi':qty<=5?'Kritik stok':'Yeterli';
+  const klass=!tracked?'off':qty===0?'empty':qty<=5?'low':'';
+  return `<div class="stock-row" data-stock-id="${safe(p.id)}">
+    <div><div class="stock-name">${safe(p.name)}</div><div class="stock-note">${safe(store.categories.find(c=>c.id===p.category_id)?.name||'Kategorisiz')}</div></div>
+    <div><div class="stock-qty ${klass}">${tracked?qty:'—'}</div><div class="stock-note">${state}</div></div>
+    <label class="toggle"><input type="checkbox" class="stock-toggle" ${tracked?'checked':''}> Stok takibi</label>
+    <div><label class="stock-note">İşlem adedi</label><input class="stock-amount" type="number" min="1" max="100000" step="1" value="1" inputmode="numeric"></div>
+    <div class="stock-actions"><button type="button" class="btn stock-add">+ Stok ekle</button><button type="button" class="btn secondary stock-remove">− Stok çıkar</button></div>
+  </div>`;
+ }).join('');
+ target.querySelectorAll('.stock-row').forEach(row=>{
+  const id=row.dataset.stockId,p=store.products.find(x=>x.id===id);
+  const toggle=row.querySelector('.stock-toggle');
+  toggle.onchange=async()=>{
+   const desired=toggle.checked;
+   if(desired&&(Number(p.stock_quantity)||0)===0&&!confirm('Bu ürünün stoğu 0. Takibi açarsanız yeni siparişler stok yetersizliği nedeniyle reddedilir. Devam edilsin mi?')){toggle.checked=false;return}
+   await updateStock(row,id,0,desired);
+  };
+  row.querySelector('.stock-add').onclick=()=>changeStock(row,id,1);
+  row.querySelector('.stock-remove').onclick=()=>changeStock(row,id,-1);
+ });
+}
+async function changeStock(row,id,sign){
+ const input=row.querySelector('.stock-amount');const amount=Number(input.value);
+ if(!Number.isSafeInteger(amount)||amount<=0||amount>100000){stockMessage('1 ile 100000 arasında tam sayı girin.',true);return}
+ if(sign<0&&!confirm(amount+' adet stoktan çıkarılsın mı?'))return;
+ await updateStock(row,id,sign*amount,null);
+}
+async function updateStock(row,id,delta,tracking){
+ const buttons=row.querySelectorAll('button,input');buttons.forEach(el=>el.disabled=true);
+ try{
+  const {error}=await db.rpc('manage_product_stock',{p_product_id:id,p_delta:delta,p_tracking:tracking});
+  if(error)throw error;
+  await reload();stockMessage('Stok güncellendi.');
+ }catch(err){stockMessage('Stok güncellenemedi: '+err.message,true);buttons.forEach(el=>el.disabled=false);const p=store.products.find(x=>x.id===id);if(p)row.querySelector('.stock-toggle').checked=!!p.stock_tracking_enabled}
+}
+$('#refreshStock').addEventListener('click',async()=>{await reload();stockMessage('Stoklar yenilendi.')});
