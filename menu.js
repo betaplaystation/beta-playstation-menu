@@ -21,7 +21,8 @@ function render(){
  const img=p.image_url ? `<img loading="lazy" src="${safe(p.image_url)}" alt="${safe(p.name)}" onerror="this.remove()">` : safe(iconFor(p.category_id));
  const sold=outOfStock(p);
  const badge=sold?'<span class="pill" style="background:#4b2025;color:#ffb9b9;border:1px solid #b64c54;font-weight:700">⛔ STOKTA YOK</span>':'<span class="pill">● Menüde</span>';
- const action=new URLSearchParams(location.search).has('loca')?(sold?'<button class="add-cart" disabled style="opacity:.48;cursor:not-allowed" aria-label="Ürün stokta yok">Tükendi</button>':`<button class="add-cart" data-add-to-cart="${safe(p.id)}">+ Sepete</button>`):'';
+ const loca=new URLSearchParams(location.search).get('loca');
+ const action=loca && loca!=='kasa'?(sold?'<button class="add-cart" disabled style="opacity:.48;cursor:not-allowed" aria-label="Ürün stokta yok">Tükendi</button>':`<button class="add-cart" data-add-to-cart="${safe(p.id)}">+ Sepete</button>`):'';
  return `<article class="product" ${sold?'style="opacity:.68"':''}><div class="product-img">${img}</div><div class="product-body"><div class="product-title">${safe(p.name)}</div><div class="product-desc">${safe(p.description||'')}</div><div class="product-bottom"><span class="price">${money(p.price)}</span>${badge}${action}</div></div></article>`;
  }).join(''):'<div class="empty">Bu kategoride gösterilecek ürün bulunamadı.</div>';
  document.querySelectorAll('.tab').forEach(el=>el.addEventListener('click',()=>{state.category=el.dataset.id;render()}));

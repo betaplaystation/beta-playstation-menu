@@ -6,6 +6,13 @@
  const cart = new Map();
  const money = n => new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(n);
  const name = labels[code];
+ // Kasa QR sadece menü/fiyat gösterir; bu bağlantıdan sipariş alınmaz.
+ if (code === 'kasa') {
+  $('#locaBanner').classList.remove('hidden');
+  $('#locaBanner').textContent = '📍 KASA MENÜSÜ · Sipariş için kasa personeline başvurun';
+  $('#cartPanel').classList.add('hidden');
+  return;
+ }
  if (!name) {
   $('#orderNotice').classList.remove('hidden');
   $('#orderNotice').textContent = 'Sipariş verebilmek için locanızdaki QR kodu okutun. Bu sayfadan menüyü inceleyebilirsiniz.';
