@@ -3,53 +3,62 @@
   color-scheme: dark;
   --bg: #08090c;
   --background: #08090c;
-  --surface: #141319;
-  --panel: #141319;
-  --card: #141319;
-  --text: #f7f4f5;
-  --muted: #b0a8ae;
-  --line: #35252e;
-  --border: #35252e;
-  --accent: #ef233c;
-  --primary: #ef233c;
-  --green: #ef233c;
-  --lime: #ef233c;
-  --accent-soft: #39121e;
+  --surface: #151316;
+  --panel: #151316;
+  --card: #151316;
+  --text: #f7f7f7;
+  --muted: #b7b7ba;
+  --line: #372126;
+  --border: #372126;
+  --accent: #ed1024;
+  --primary: #ed1024;
+  --green: #ed1024;
+  --lime: #ed1024;
+  --accent-soft: #350c15;
 }
-html {background: #08090c; accent-color: #ef233c}
-body {background: radial-gradient(ellipse at 88% -12%, #33111d 0, transparent 35%), #08090c !important; color:#f7f4f5 !important}
-::selection {background:#b91c36;color:#fff}
-a {color:#ff667d}
-a:hover {color:#ff93a2}
-.header {border-color:#39232d !important}
-.brand, .brand-sub, .header-link {color:#f7f4f5}
-.brand-icon {filter:drop-shadow(0 0 12px #ef233c55)}
-.hero {background:linear-gradient(120deg,#1d1018 0%,#111017 60%,#23111b 100%) !important;border:1px solid #48242f !important;box-shadow:inset 0 1px #ffffff0b,0 12px 50px #0005}
-.hero h1 span,.eyebrow {color:#ff405e !important}
-.hero-art {color:#ff405e}
-.art-badge {background:#481a29 !important;color:#ffcbd4 !important;border-color:#7a3045 !important}
-.panel,.product-card,.menu-card,.card,.listrow,.order-card {background:#151319 !important;border-color:#392630 !important;color:#f7f4f5}
-.product-card:hover,.menu-card:hover,.card:hover {border-color:#b92a46 !important}
-.section-head,.listrow,.order-card {border-color:#392630}
-.tabs button,.tab,.navitem,.btn.secondary,button.secondary {color:#f4e8eb !important;background:#201820 !important;border-color:#54313e !important}
-.tabs .active,.tabs button.active,.tab.active,.navitem.active {background:#451622 !important;color:#fff !important;border-color:#ef233c !important;box-shadow:inset 3px 0 #ef233c}
-.btn:not(.secondary):not(.danger),button[type="submit"],#sendOrder {background:#dc1f3c !important;color:#fff !important;border-color:#ff405e !important;box-shadow:0 5px 18px #cb143429}
-.btn:not(.secondary):not(.danger):hover,button[type="submit"]:hover,#sendOrder:hover {background:#f3314f !important}
-.btn.danger {background:#4e1823 !important;color:#ffd1d9 !important;border-color:#a43148 !important}
+html {background: #08090c; accent-color: #ed1024}
+body {background: radial-gradient(ellipse at 88% -12%, #2d080d 0, transparent 35%), #08090c !important; color:#f7f7f7 !important}
+::selection {background:#a9091c;color:#fff}
+a {color:#ff3446}
+a:hover {color:#ff6370}
+.header {border-color:#392126 !important}
+.brand, .brand-sub, .header-link {color:#f7f7f7}
+.brand-icon {filter:drop-shadow(0 0 12px #ed102455)}
+.hero {background:linear-gradient(120deg,#1d0d10 0%,#111017 60%,#210b10 100%) !important;border:1px solid #4c1721 !important;box-shadow:inset 0 1px #ffffff0b,0 12px 50px #0005}
+.hero h1 span,.eyebrow {color:#f3132d !important}
+.hero-art {color:#f3132d}
+.art-badge {background:#49101c !important;color:#ffcbd4 !important;border-color:#821529 !important}
+.panel,.product-card,.menu-card,.card,.listrow,.order-card {background:#161316 !important;border-color:#392329 !important;color:#f7f7f7}
+.product-card:hover,.menu-card:hover,.card:hover {border-color:#b60921 !important}
+.section-head,.listrow,.order-card {border-color:#392329}
+.tabs button,.tab,.navitem,.btn.secondary,button.secondary {color:#f6f4f4 !important;background:#201619 !important;border-color:#54242c !important}
+.tabs .active,.tabs button.active,.tab.active,.navitem.active {background:#430e19 !important;color:#fff !important;border-color:#ed1024 !important;box-shadow:inset 3px 0 #ed1024}
+.btn:not(.secondary):not(.danger),button[type="submit"],#sendOrder {background:#dc0921 !important;color:#fff !important;border-color:#f3132d !important;box-shadow:0 5px 18px #c9001f29}
+.btn:not(.secondary):not(.danger):hover,button[type="submit"]:hover,#sendOrder:hover {background:#f51d34 !important}
+.btn.danger {background:#4e1823 !important;color:#ffd1d9 !important;border-color:#a61b31 !important}
 button:disabled {opacity:.52;cursor:not-allowed;box-shadow:none !important}
-input,select,textarea,.search {background:#100f14 !important;color:#fff !important;border:1px solid #54303e !important}
-input:focus,select:focus,textarea:focus,.search:focus,button:focus-visible {outline:2px solid #ff516c !important;outline-offset:2px;border-color:#ff516c !important}
-input[type="checkbox"] {accent-color:#ef233c}
-.sidebar {background:#110e14 !important;border-color:#392630 !important}
-.main-area {color:#f7f4f5}
-.muted,.subtitle,.list-sub,.count,.footer {color:#baaeb5 !important}
-.notice:not(.error),.loca-banner {background:#30141e !important;color:#ffe5ea !important;border-color:#9a2944 !important}
+input,select,textarea,.search {background:#100d10 !important;color:#fff !important;border:1px solid #54242b !important}
+input:focus,select:focus,textarea:focus,.search:focus,button:focus-visible {outline:2px solid #f72840 !important;outline-offset:2px;border-color:#f72840 !important}
+input[type="checkbox"] {accent-color:#ed1024}
+.sidebar {background:#120e10 !important;border-color:#392329 !important}
+.main-area {color:#f7f7f7}
+.muted,.subtitle,.list-sub,.count,.footer {color:#b7b7bb !important}
+.notice:not(.error),.loca-banner {background:#2f0e17 !important;color:#ffe5ea !important;border-color:#9a152b !important}
 .notice.error,.error {color:#ffa1b0 !important}
-#newOrderAlert {background:#4d1424 !important;color:#ffe7eb !important;border-color:#f33a56 !important}
-.cart-panel {border-color:#a32942 !important}
+#newOrderAlert {background:#450817 !important;color:#ffe7eb !important;border-color:#ff1733 !important}
+.cart-panel {border-color:#a20c23 !important}
 .cart-total {color:#fff}
-.status {color:#f3c4cf}
+.status {color:#f4dadf}
 /* stok: kritik ve tükendi uyarıları okunaklı kalsın */
-.stock-out,.out-of-stock,[class*="out-of-stock"],[class*="sold-out"] {color:#ff768d !important}
+.stock-out,.out-of-stock,[class*="out-of-stock"],[class*="sold-out"] {color:#ff4559 !important}
 .stock-low,.low-stock {color:#ffb75e !important}
 @media (max-width:700px){.hero {border-radius:18px}.panel {border-radius:15px}}
+
+/* Logo ile eslesen net neon kirmizi ve header simgesi */
+:root {--beta-red:#ed1024;--beta-red-bright:#ff1831;--beta-red-deep:#98071c;}
+.brand-icon.beta-brand-logo {display:inline-flex;align-items:center;justify-content:center;overflow:hidden;padding:0 !important;background:#0c090b !important;border:1px solid #65111d !important;border-radius:11px;box-shadow:0 0 15px #ed102445;line-height:0;flex-shrink:0}
+.beta-brand-logo img {display:block;width:100%;height:100%;min-width:0;object-fit:cover;border-radius:inherit}
+.hero h1 span,.eyebrow {color:#ff1831 !important}
+.tabs .active,.tabs button.active,.tab.active,.navitem.active {border-color:#ed1024 !important}
+.btn:not(.secondary):not(.danger),button[type="submit"],#sendOrder {background:#df0c24 !important;border-color:#f91832 !important}
+.btn:not(.secondary):not(.danger):hover,button[type="submit"]:hover,#sendOrder:hover {background:#f91832 !important}
