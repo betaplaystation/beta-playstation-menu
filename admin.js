@@ -35,7 +35,7 @@ async function deleteCategory(id){const c=store.categories.find(x=>x.id===id);if
 $('#menuUrl').textContent=new URL('index.html',location.href).href;$('#copyLink').onclick=async()=>{const url=new URL('index.html',location.href).href;try{await navigator.clipboard.writeText(url);message('Menü linki kopyalandı.')}catch(e){message('Link: '+url)}};
 init();
 
-const orderLabels={'platinum':'Platinum Loca','gold-1':'Gold 1','gold-2':'Gold 2','gold-3':'Gold 3','gold-4':'Gold 4','alt-1':'Alt Kat 1','alt-2':'Alt Kat 2','alt-3':'Alt Kat 3','kasa':'Kasa'};
+const orderLabels={'platinum':'PLATİNUM','gold-1':'GOLD 1','gold-2':'GOLD 2','gold-3':'GOLD 3','gold-4':'GOLD 4','alt-1':'GOLD 5','alt-2':'GOLD 6','alt-3':'GOLD 7','kasa':'Kasa'};
 const statusLabels={new:'Yeni',preparing:'Hazırlanıyor',delivered:'Teslim edildi',cancelled:'İptal'};
 let orderMonitorId=null,knownOrderIds=null,monitorBusy=false,audioContext=null,notifySound=false;
 // Üç tur, iki tonlu sipariş alarmı. Tarayıcı sesini açmak için butona basılmalıdır.

@@ -2,7 +2,7 @@
 (() => {
  const $ = s => document.querySelector(s);
  const code = new URLSearchParams(location.search).get('loca');
- const labels = {'platinum':'Platinum Loca','gold-1':'Gold 1','gold-2':'Gold 2','gold-3':'Gold 3','gold-4':'Gold 4','alt-1':'Alt Kat 1','alt-2':'Alt Kat 2','alt-3':'Alt Kat 3','kasa':'Kasa'};
+ const labels = {'platinum':'PLATİNUM','gold-1':'GOLD 1','gold-2':'GOLD 2','gold-3':'GOLD 3','gold-4':'GOLD 4','alt-1':'GOLD 5','alt-2':'GOLD 6','alt-3':'GOLD 7','kasa':'Kasa'};
  const cart = new Map();
  const money = n => new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(n);
  const name = labels[code];
