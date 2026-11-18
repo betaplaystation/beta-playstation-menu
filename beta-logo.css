@@ -1,0 +1,26 @@
+/* Beta Playstation - Hero logo gorseli (diger site stillerine dokunmaz) */
+.hero-art.beta-logo-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 !important;
+  border: 1px solid rgba(239,35,60,.55) !important;
+  border-radius: 24px !important;
+  background: #08080c !important;
+  box-shadow: 0 0 30px rgba(220,31,60,.14), inset 0 0 20px rgba(220,31,60,.08) !important;
+  isolation: isolate;
+}
+.hero-art.beta-logo-frame::before,
+.hero-art.beta-logo-frame::after { content: none !important; display: none !important; }
+.beta-logo-frame .beta-hero-logo {
+  display: block;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: 23px;
+}
