@@ -321,3 +321,26 @@
 .advance-row{display:flex;align-items:center;gap:10px;background:#172a22;padding:13px;border-radius:9px;border:1px solid #296d4d}.advance-row input{width:20px;height:20px;margin:0;flex:0 0 auto}
 .paid-state{color:#7ef3a5!important}.partial-state{color:#ffd481!important}.unpaid-state{color:#ff7777!important}.report-hide{font-size:12px;padding:8px 10px;white-space:nowrap}
 @media(max-width:600px){.recent-top{align-items:stretch}.outstanding{width:100%;align-items:flex-start}}
+
+
+/* V27 — Geniş masaüstü uyarı / ayar / adisyon pencereleri */
+@media (min-width: 850px) {
+  dialog { width:min(94vw, 900px); max-width:94vw; padding:28px 32px; max-height:90vh; }
+  #tableDialog { width:min(94vw, 1120px); }
+  #tableDialog .tarife-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+  #tableDialog .tarife-item {padding:16px;}
+  #tableDialog .tarife-item input {min-width:0;}
+  #sessionDialog { width:min(94vw, 900px); }
+  #manualDialog, #chargesDialog {width:min(94vw, 900px);}
+  #manageDialog {width:min(94vw, 1000px);}
+  #receiptDialog {width:min(94vw, 1050px);}
+  .payment-dialog {width:min(94vw, 950px);}
+}
+@media (min-width: 600px) and (max-width: 849px) {
+  dialog {width:94vw; max-width:94vw;}
+  #tableDialog .tarife-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media (max-width: 599px) {
+  dialog {width:96vw; max-width:96vw; padding:16px;}
+  #tableDialog .tarife-grid {grid-template-columns:1fr;}
+}
