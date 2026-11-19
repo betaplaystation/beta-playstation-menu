@@ -615,3 +615,30 @@ body.bulk-dragging,body.bulk-dragging *{user-select:none!important}
 #manualDialog{width:min(1100px,95vw)!important;max-width:95vw!important;}
 .restore-history-btn{font-size:11px;}
 .restore-dialog{width:min(600px,95vw)}
+
+/* V39 — Hasansoft benzeri üç alanlı geniş masaüstü planı */
+@media(min-width:901px){
+ #app .table-workspace{grid-template-columns:minmax(250px,285px) minmax(0,1fr)!important;height:calc(100dvh - 166px)!important;min-height:600px!important;}
+ #app .desktop-right-column{min-height:0;}
+ #app #tableIconsArea{flex:1 1 0!important;min-height:320px!important;border:1px solid #55424a!important;border-radius:8px!important;padding:12px!important;background:#111115!important;}
+ #tableIconsArea #cards.cards{display:grid!important;grid-template-columns:repeat(12,var(--beta-tile-width,112px))!important;grid-template-rows:repeat(10,var(--beta-tile-height,137px))!important;grid-auto-flow:row!important;gap:12px!important;min-height:100%!important;align-content:start!important;justify-content:start!important;position:relative;overflow:visible!important;}
+ #app .desktop-bottom-dock{flex:0 0 clamp(160px,24dvh,290px)!important;overflow:hidden!important;}
+ #app #recentHistory{flex:1 1 0!important;max-height:none!important;min-height:0!important;overflow:hidden!important;}
+ #app #recentHistory #history{height:auto!important;max-height:none!important;flex:1 1 0!important;min-height:0!important;overflow-y:auto!important;}
+ #app .desktop-bottom-dock .stats{flex:none!important;}
+ #selectedTablePanel{background:#19151a!important;}
+}
+#tableIconsArea .icon-list-heading{display:flex!important;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+#layoutEditToggle{padding:9px 13px;font-weight:800;}
+#layoutEditToggle.active{background:#81212a;color:white;}
+.layout-hint{display:block;margin:4px 0 12px;padding:7px 10px;border:1px solid #795826;background:#32261a;color:#ffe7a7;border-radius:5px;}
+.layout-hint[hidden]{display:none!important;}
+#cards.grid-editing{background-image:linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px);background-size:calc(var(--beta-tile-width,112px) + 12px) calc(var(--beta-tile-height,137px) + 12px);}
+#cards .layout-movable{cursor:grab!important;touch-action:none;}
+#cards .grid-dragging{opacity:.6;outline:3px solid #ffca4a;cursor:grabbing!important;}
+.table-context-menu{position:fixed;z-index:99999;width:238px;border:1px solid #75525b;border-radius:8px;background:#211b22;box-shadow:0 14px 40px #000a;padding:6px;}
+.table-context-menu[hidden]{display:none!important;}
+.table-context-menu button{width:100%;border:0;background:transparent;color:#fafafa;text-align:left;padding:11px;border-radius:6px;font-size:14px;font-weight:750;}
+.table-context-menu button:not(:disabled):hover{background:#913039;}
+.table-context-menu button:disabled{opacity:.42;cursor:not-allowed;}
+@media(max-width:900px){#layoutEditToggle{display:none!important}}

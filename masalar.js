@@ -265,6 +265,9 @@ function renderDesktop(){
    }else{openSessionDialog(t.id)}
   });
   tile.title='Tek tık: masayı seç · Çift tık: '+(s?'hesabı kapat / ödeme':'hesap aç');
+  tile.addEventListener('contextmenu',e=>{e.preventDefault();selectDeskTable(t.id);showTableContext(t.id,e.clientX,e.clientY)});
+  tile.addEventListener('pointerdown',e=>beginTilePlacement(e,tile));
+  applyGridPlacement(tile,t.id,i);
   fragment.append(tile);
  }
  grid.replaceChildren(fragment);
@@ -295,6 +298,7 @@ $('bulkClear').onclick=()=>{bulkSelected.clear();updateBulkSelection()};
   if(e.button!==0||e.pointerType==='touch'||document.querySelector('dialog[open]'))return;
   // Ctrl+tık tekil seçim için mevcut davranışı bırak.
   if(e.ctrlKey||e.metaKey)return;
+  if(layoutEditMode)return;
   origin={x:e.clientX,y:e.clientY,id:e.pointerId};oldSelected=new Set(e.shiftKey?bulkSelected:[]);
  });
  window.addEventListener('pointermove',e=>{
@@ -316,7 +320,7 @@ const bulkSelectedTables=()=>state.tables.filter(t=>bulkSelected.has(t.id));
 const bulkRowSession=id=>state.sessions.find(s=>s.table_id===id&&!s.ended_at);
 function renderBulkOpen(){
  const tables=bulkSelectedTables().filter(t=>!active(t));
- $('bulkRows').innerHTML=tables.map(t=>`<tr data-bulk-id="${esc(t.id)}"><th scope="row">${esc(t.name)}</th><td><select data-bulk-field="controllers" aria-label="${esc(t.name)} kol sayısı">${[1,2,3,4].map(i=>`<option value="${i}">${i} kol · ${money(rate(t.id,i))}/saat</option>`).join('')}</select></td><td><select data-bulk-field="mode"><option value="unlimited">Süresiz</option><option value="timed">Süreli</option></select></td><td><select data-bulk-field="entryType" disabled><option value="minutes">Dakika</option><option value="amount">Fiyat (₺)</option></select></td><td><input data-bulk-field="entryValue" type="number" min="0.01" step="any" placeholder="Dakika / ₺" disabled></td><td><label class="bulk-paid"><input data-bulk-field="paid" type="checkbox" disabled> Peşin alındı</label><select data-bulk-field="payMethod" disabled><option value="card">Kart</option><option value="cash">Nakit</option></select></td></tr>`).join('');
+ $('bulkRows').innerHTML=tables.map(t=>`<tr data-bulk-id="${esc(t.id)}"><th scope="row">${esc(t.name)}</th><td><select data-bulk-field="controllers" aria-label="${esc(t.name)} kol sayısı">${[1,2,3,4].map(i=>`<option value="${i}">${i} kol · ${money(rate(t.id,i))}/saat</option>`).join('')}</select></td><td><select data-bulk-field="mode"><option value="timed" selected>Süreli</option><option value="unlimited">Süresiz</option></select></td><td><select data-bulk-field="entryType"><option value="minutes">Dakika</option><option value="amount">Fiyat (₺)</option></select></td><td><input data-bulk-field="entryValue" type="number" min="0.01" step="any" placeholder="Dakika / ₺" value="60"></td><td><label class="bulk-paid"><input data-bulk-field="paid" type="checkbox"> Peşin alındı</label><select data-bulk-field="payMethod" disabled><option value="card">Kart</option><option value="cash">Nakit</option></select></td></tr>`).join('');
  $('bulkRows').querySelectorAll('tr').forEach(tr=>{
   const mode=tr.querySelector('[data-bulk-field=mode]');const paid=tr.querySelector('[data-bulk-field=paid]');
   const update=()=>{const timed=mode.value==='timed';for(const key of ['entryType','entryValue','paid'])tr.querySelector(`[data-bulk-field=${key}]`).disabled=!timed;tr.querySelector('[data-bulk-field=payMethod]').disabled=!timed||!paid.checked};
@@ -888,6 +892,88 @@ async function loadReport(){
  finally{reportLoading=false}
 }
 initReportDates();
+
+
+// V39 — masaüstü kareli düzen. Görsel konumlar yalnızca bu bilgisayarın
+// tarayıcı deposunda saklanır; masa fiyatları ve adisyonlar etkilenmez.
+const TABLE_GRID_COLS=12, TABLE_GRID_ROWS=10;
+const TABLE_GRID_KEY='beta_playstation_layout_v39';
+let layoutEditMode=false, layoutMove=null;
+function getGridPositions(){try{const p=JSON.parse(localStorage.getItem(TABLE_GRID_KEY)||'{}');return p&&typeof p==='object'?p:{}}catch{return {}}}
+function setGridPositions(p){try{localStorage.setItem(TABLE_GRID_KEY,JSON.stringify(p))}catch(e){console.warn('Yerleşim kaydedilemedi',e)}}
+function applyGridPlacement(tile,id,index){
+ if(window.matchMedia('(max-width:900px)').matches)return;
+ const p=getGridPositions(),v=p[id];
+ const row=Number.isInteger(v?.row)&&v.row>=1&&v.row<=TABLE_GRID_ROWS?v.row:Math.floor(index/TABLE_GRID_COLS)+1;
+ const col=Number.isInteger(v?.col)&&v.col>=1&&v.col<=TABLE_GRID_COLS?v.col:index%TABLE_GRID_COLS+1;
+ tile.style.gridRow=String(row);tile.style.gridColumn=String(col);
+ tile.classList.toggle('layout-movable',layoutEditMode);
+}
+const layoutButton=$('layoutEditToggle');
+layoutButton.addEventListener('click',()=>{
+ layoutEditMode=!layoutEditMode;
+ layoutButton.textContent=layoutEditMode?'✓ Yerleşimi Bitir':'▦ Yerleşimi Düzenle';
+ layoutButton.classList.toggle('active',layoutEditMode);
+ $('layoutHint').hidden=!layoutEditMode;
+ $('cards').classList.toggle('grid-editing',layoutEditMode);
+ document.querySelectorAll('#cards .desk-tile').forEach(x=>x.classList.toggle('layout-movable',layoutEditMode));
+});
+function beginTilePlacement(e,tile){
+ if(!layoutEditMode||e.button!==0||window.matchMedia('(max-width:900px)').matches)return;
+ e.preventDefault();e.stopPropagation();
+ const startX=e.clientX,startY=e.clientY,id=tile.dataset.tableId;
+ let dragged=false;
+ const onMove=ev=>{if(Math.hypot(ev.clientX-startX,ev.clientY-startY)>4){dragged=true;tile.classList.add('grid-dragging')}};
+ const onUp=ev=>{
+  document.removeEventListener('pointermove',onMove,true);document.removeEventListener('pointerup',onUp,true);
+  tile.classList.remove('grid-dragging');
+  if(!dragged)return;
+  const grid=$('cards'),bounds=grid.getBoundingClientRect(),style=getComputedStyle(grid);
+  const width=grid.firstElementChild?.getBoundingClientRect().width||112;
+  const height=grid.firstElementChild?.getBoundingClientRect().height||137;
+  const gapX=parseFloat(style.columnGap)||12,gapY=parseFloat(style.rowGap)||12;
+  const col=Math.min(TABLE_GRID_COLS,Math.max(1,Math.floor((ev.clientX-bounds.left+grid.scrollLeft)/(width+gapX))+1));
+  const row=Math.min(TABLE_GRID_ROWS,Math.max(1,Math.floor((ev.clientY-bounds.top+grid.scrollTop)/(height+gapY))+1));
+  const positions=getGridPositions();
+  const old={col:Number(tile.style.gridColumn),row:Number(tile.style.gridRow)};
+  const other=[...grid.querySelectorAll('.desk-tile')].find(x=>x!==tile&&Number(x.style.gridColumn)===col&&Number(x.style.gridRow)===row);
+  positions[id]={col,row};
+  if(other){positions[other.dataset.tableId]=old;other.style.gridColumn=String(old.col);other.style.gridRow=String(old.row)}
+  tile.style.gridColumn=String(col);tile.style.gridRow=String(row);setGridPositions(positions);
+  msg('Masa konumu kaydedildi.');
+ };
+ document.addEventListener('pointermove',onMove,true);document.addEventListener('pointerup',onUp,true);
+}
+const contextMenu=$('tableContextMenu');let contextTableId=null;
+function hideTableContext(){contextMenu.hidden=true;contextTableId=null}
+function showTableContext(id,x,y){
+ contextTableId=id;const t=state.tables.find(t=>t.id===id),s=t&&active(t);
+ const last=state.sessions.find(s=>s.table_id===id&&s.ended_at);
+ const hasPayment=last&&state.payments.some(p=>p.session_id===last.id);
+ for(const b of contextMenu.querySelectorAll('button')){
+  const a=b.dataset.contextAction;
+  b.disabled=(a==='manual'||a==='manage'||a==='close')&&!s || a==='restore'&&(!last||!!s||!!hasPayment)||a==='partial';
+  if(a==='partial')b.title='Açık hesaptan kısmi tahsilat için veritabanı desteği gerekiyor; şimdilik kapalı.';
+ }
+ contextMenu.hidden=false;contextMenu.style.left=Math.max(8,Math.min(x,window.innerWidth-255))+'px';
+ contextMenu.style.top=Math.max(8,Math.min(y,window.innerHeight-305))+'px';
+}
+contextMenu.addEventListener('click',async e=>{
+ const b=e.target.closest('[data-context-action]');if(!b||b.disabled)return;
+ const id=contextTableId;hideTableContext();const t=state.tables.find(x=>x.id===id);if(!t)return;
+ const s=active(t),a=b.dataset.contextAction;
+ if(a==='settings')editTable(id);
+ else if(a==='manual'&&s)openManualDialog(id);
+ else if(a==='manage'&&s)openManageSession(s.id);
+ else if(a==='close'&&s)await showReceipt(s.id);
+ else if(a==='restore'){
+  const latest=state.sessions.find(x=>x.table_id===id&&x.ended_at);
+  if(latest)openRestoreDialog(latest.id);
+ }
+});
+document.addEventListener('pointerdown',e=>{if(!contextMenu.hidden&&!contextMenu.contains(e.target))hideTableContext()},true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')hideTableContext()});
+window.addEventListener('scroll',hideTableContext,true);
 
 init();
 
