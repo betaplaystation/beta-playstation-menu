@@ -1,0 +1,39 @@
+/* Beta Playstation - modern kasa paneli arayuzu. Mevcut stok JS ve Supabase islemleri degismez. */
+:root { --beta-red:#ed1024;--beta-red-glow:rgba(237,16,36,.16);--beta-surface:#121216;--beta-border:#35242a;}
+.beta-masa-link{display:block;text-decoration:none;color:inherit;box-sizing:border-box}
+.beta-masa-link:hover{background:rgba(237,16,36,.13);color:#fff}
+#stockView{max-width:1200px}
+.beta-stock-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:14px;padding:26px 28px;border:1px solid rgba(237,16,36,.36);border-radius:18px;background:radial-gradient(circle at 95% 10%,rgba(237,16,36,.22),transparent 40%),linear-gradient(125deg,#1b1418,#101014 65%);box-shadow:inset 4px 0 0 var(--beta-red)}
+.beta-stock-hero h2{font-size:clamp(1.25rem,2.4vw,2rem);line-height:1.2;color:#fff;margin:5px 0 9px}
+.beta-stock-hero p{font-size:.94rem;line-height:1.55;color:#b6aeb2;margin:0;max-width:600px}
+.beta-stock-hero .btn{flex-shrink:0;min-height:42px;border-color:#6b3038!important;color:#fff!important;background:#25191e!important}
+.beta-kicker{font-weight:800;letter-spacing:.15em;font-size:.7rem;color:#ff4655}
+.beta-stock-legend{display:flex;align-items:center;flex-wrap:wrap;gap:12px 24px;background:#111115;border:1px solid #2b252b;border-radius:13px;padding:13px 18px;margin-bottom:14px;color:#c5c0c2;font-size:.78rem}
+.beta-stock-legend span{display:inline-flex;align-items:center;gap:7px}
+.beta-dot{display:inline-block;width:8px;height:8px;flex-shrink:0;border-radius:50%;background:#bbb}
+.beta-dot.good{background:#49c998}.beta-dot.warn{background:#ffba57}.beta-dot.bad{background:#f34a5a}.beta-dot.off{background:#777}
+.beta-stock-panel{border:1px solid #32272d!important;border-radius:16px!important;background:#111115!important;padding:20px!important}
+.beta-stock-panel-head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #31282c;margin-bottom:8px;padding-bottom:14px}
+.beta-stock-panel-head h3{margin:0 0 4px;color:#fff;font-size:1.1rem}
+.beta-stock-panel-head p{margin:0!important;font-size:.85rem}
+#stockMsg:not(:empty){display:block;padding:8px 0}
+/* Ürün kartları: okunabilir masa/adisyon estetiği */
+#stockList{display:grid;grid-template-columns:1fr;gap:10px;padding-top:8px}
+#stockList .stock-row{display:grid;grid-template-columns:minmax(155px,1.6fr) minmax(82px,.55fr) minmax(120px,.85fr) minmax(105px,.8fr) minmax(120px,.8fr);gap:16px;align-items:center;border:1px solid #342b30;border-radius:12px;padding:17px;background:linear-gradient(140deg,#1a191e,#141418);transition:border-color .15s ease}
+#stockList .stock-row:hover{border-color:#683039}
+#stockList .stock-name{font-weight:800;color:#f6f4f5;font-size:1rem;line-height:1.3}
+#stockList .stock-note{color:#aaa1a7;font-size:.75rem;line-height:1.6}
+#stockList .stock-qty{font-weight:900;font-size:1.45rem;font-variant-numeric:tabular-nums;color:#71d7a7}
+#stockList .stock-qty.low{color:#ffb44d}#stockList .stock-qty.empty{color:#ff5e6e}#stockList .stock-qty.off{color:#9a949c}
+#stockList .stock-toggle{accent-color:#ed1024;width:16px;height:16px}
+#stockList .stock-row .toggle{display:flex;align-items:center;gap:8px;white-space:normal;font-size:.84rem;color:#ece6e9}
+#stockList .stock-row input[type="number"]{width:100%;max-width:100%;min-width:0;box-sizing:border-box;min-height:42px;padding:9px 11px;border:1px solid #564148;border-radius:9px;background:#0b0b0f;color:#fff;font-size:1rem}
+#stockList .stock-row input[type="number"]:focus{outline:2px solid #ed1024;outline-offset:1px}
+#stockList .stock-actions{display:flex;flex-direction:column;gap:7px}
+#stockList .stock-actions .btn{width:100%;min-height:37px;padding:9px 10px;border-radius:9px;font-weight:800;font-size:.78rem}
+#stockList .stock-add{background:#d9172b!important;border:1px solid #ec2d3f!important;color:#fff!important}
+#stockList .stock-add:hover{background:#f22639!important}
+#stockList .stock-remove{background:#252025!important;border:1px solid #50333b!important;color:#ffbdc4!important}
+#stockList .stock-remove:hover{background:#34242a!important}
+@media(max-width:1050px){#stockList .stock-row{grid-template-columns:minmax(120px,1.4fr) 80px minmax(90px,.8fr);gap:12px}#stockList .stock-row>div:nth-child(4){grid-column:1/2}#stockList .stock-actions{grid-column:2/4;flex-direction:row}}
+@media(max-width:620px){.beta-stock-hero{padding:20px}.beta-stock-hero .btn{width:100%}.beta-stock-panel{padding:12px!important}#stockList .stock-row{grid-template-columns:1fr 1fr;gap:12px;padding:14px}#stockList .stock-row>div:first-child{grid-column:1/-1}#stockList .stock-row>div:nth-child(4){grid-column:1/2}#stockList .stock-actions{grid-column:1/-1;flex-direction:row}#stockList .stock-actions .btn{font-size:.76rem}}
