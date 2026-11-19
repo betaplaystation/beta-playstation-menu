@@ -135,6 +135,8 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
 
 // V30: kompakt masa planı, seçilen masanın bütün işlemleri sol detay panelinde.
 const tableDeviceArt={
+ lounge:'<svg viewBox="0 0 72 52" aria-hidden="true"><rect x="9" y="15" width="54" height="27" rx="8" fill="#8f3049" stroke="#ff819d" stroke-width="2"/><rect x="14" y="23" width="44" height="18" rx="6" fill="#bb4562"/><path d="M10 30H5v13h62V30h-5" fill="#6b2339" stroke="#ff819d" stroke-width="2"/><path d="M18 45v4m36-4v4" stroke="#f6d2d9" stroke-width="4" stroke-linecap="round"/><path d="M32 5h8v7h-8z" fill="#eeeeff"/><path d="M29 10h14" stroke="#eeeeff" stroke-width="2"/></svg>',
+
  playstation:'<svg viewBox="0 0 72 52" aria-hidden="true"><path d="M22 16h28c7 0 12 5 14 13l4 12c2 10-8 14-14 8l-9-8H27l-9 8C12 55 2 51 4 41l4-12c2-8 7-13 14-13Z" fill="#eee" stroke="#a7a7b6" stroke-width="2"/><path d="M19 27v12m-6-6h12" stroke="#303344" stroke-width="4" stroke-linecap="round"/><circle cx="48" cy="29" r="3.5" fill="#ff4655"/><circle cx="56" cy="35" r="3.5" fill="#4baaf1"/><circle cx="37" cy="33" r="4" fill="#b7b9c6"/></svg>',
  computer:'<svg viewBox="0 0 72 52" aria-hidden="true"><rect x="7" y="6" width="58" height="35" rx="4" fill="#dce8f5" stroke="#7696b5" stroke-width="2"/><rect x="12" y="11" width="48" height="25" rx="1" fill="#1e5d87"/><path d="M36 41v6M22 48h28" stroke="#c8d1dc" stroke-width="4" stroke-linecap="round"/></svg>',
  billiards:'<svg viewBox="0 0 72 52" aria-hidden="true"><rect x="5" y="6" width="62" height="40" rx="5" fill="#653c1c"/><rect x="10" y="11" width="52" height="30" rx="3" fill="#138a5c"/><g fill="#131619"><circle cx="11" cy="12" r="4"/><circle cx="61" cy="12" r="4"/><circle cx="11" cy="40" r="4"/><circle cx="61" cy="40" r="4"/></g><circle cx="26" cy="24" r="4" fill="#fafafa"/><circle cx="43" cy="31" r="4" fill="#f4d75a"/><circle cx="48" cy="20" r="4" fill="#fff"/></svg>'
@@ -206,12 +208,13 @@ function renderDesktop(){
   const tile=document.createElement('button');tile.type='button';tile.className='desk-tile '+(s?'desk-busy':'desk-free');
   tile.dataset.tableId=t.id;tile.classList.toggle('bulk-selected',bulkSelected.has(t.id));tile.style.setProperty('--closed-color',validTableColor(t.closed_color));
   tile.setAttribute('aria-label',t.name+' · '+(s?'Dolu':'Boş')+' · bilgileri aç');
-  const kind=['playstation','computer','billiards'].includes(t.device_type)?t.device_type:'playstation';
+  const kind=['lounge','playstation','computer','billiards'].includes(t.device_type)?t.device_type:'playstation';
   // Sadece süreli açık hesaplar: açılışta ödeme alınmışsa yeşil, alınmamışsa kırmızı nokta.
   // Bu gösterge nakit/kart tahsilat kaydını değiştirmez.
   const paidMarker=s&&s.mode==='timed'
    ? `<span class="desk-prepaid-dot ${advanceFor(s.id)?'paid':'unpaid'}" title="${advanceFor(s.id)?'Süreli hesap: açılış ücreti alındı':'Süreli hesap: açılış ücreti alınmadı'}" aria-label="${advanceFor(s.id)?'Açılış ücreti alındı':'Açılış ücreti alınmadı'}"></span>`
    : '';
+  tile.dataset.deviceKind=kind;
   tile.innerHTML=`<span class="desk-tile-status">${s?'● DOLU':'● BOŞ'}</span>${paidMarker}<span class="desk-tile-clock" data-tile-time="${esc(t.id)}">${s?'—':'BOŞ'}</span><span class="desk-tile-art">${tableDeviceArt[kind]}</span><span class="desk-tile-name">${esc(t.name)}</span>`;
   // Tek tık: masayı sol panelde seç. Çift tık: boşsa hesap aç, doluysa ödeme ekranı.
   tile.addEventListener('click',e=>{

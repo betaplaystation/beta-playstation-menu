@@ -477,3 +477,29 @@ body.bulk-dragging,body.bulk-dragging *{user-select:none!important}
 #bulkResult{font-size:13px;padding:8px 0;max-height:170px;overflow:auto}
 .bulk-ok{color:#73eaa3;margin:2px 0}.bulk-error{color:#ff858b;margin:2px 0}
 @media(max-width:700px){.bulk-dialog{padding:12px;width:98vw}.bulk-hint{width:100%}}
+
+/* V35 - compact tile plan, independent of the old 390px full-card grid. */
+#tableIconsArea #cards.cards {
+  display:grid !important;
+  grid-template-columns:repeat(auto-fill,var(--beta-tile-width,112px)) !important;
+  grid-auto-rows:var(--beta-tile-height,137px) !important;
+  align-items:start !important;
+  align-content:start !important;
+  justify-content:start !important;
+  row-gap:12px !important;
+  column-gap:11px !important;
+  min-height:0 !important;
+  height:auto !important;
+}
+#tableIconsArea #cards .desk-tile {
+  align-self:start !important;
+  margin:0 !important;
+  box-sizing:border-box;
+}
+#tableIconsArea #cards .desk-tile-art {margin:0 auto !important;}
+#tableIconsArea #cards .desk-tile-name {margin-top:auto;}
+#tableIconsArea #cards .desk-tile[data-device-kind="lounge"] .desk-tile-art svg {filter: drop-shadow(0 2px 2px #0005);}
+#tableIconsArea #cards .desk-tile[data-device-kind="lounge"]:not(.desk-busy) {background:linear-gradient(160deg,#271a32,#17141d);}
+@media(max-width:800px){
+ #tableIconsArea #cards.cards {grid-template-columns:repeat(auto-fill,var(--beta-tile-width,112px)) !important;}
+}
