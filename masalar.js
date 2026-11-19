@@ -51,7 +51,7 @@ async function reload(silent=false){
   for(const x of r)if(x.error)throw x.error;
   [state.tables,state.rates,state.sessions,state.charges]=r.map(x=>x.data||[]);
   const interesting=state.sessions.filter(s=>!s.ended_at).concat(state.sessions.filter(s=>s.ended_at).slice(0,15));
-  const sessionIds=interesting.map(s=>s.id);
+  const sessionIds=[...new Set(interesting.map(s=>s.id))];
   state.links=[];state.orders=[];state.manualItems=[];state.segments=[];state.payments=[];state.advances=[];
   const hidden=await db.from('cafe_report_hidden_v26').select('session_id').limit(1000);
   if(hidden.error)throw hidden.error;state.hiddenReports=(hidden.data||[]).map(x=>x.session_id);
@@ -130,7 +130,7 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
  }).join(''):'<p class="muted">Henüz hesap açılışı veya kapanışı yok.</p>';
  updateOutstanding();
  document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));document.querySelectorAll('[data-pay-history]').forEach(b=>b.onclick=()=>openPayment(b.dataset.payHistory));tick();}
-function updateOutstanding(){const live=state.sessions.filter(s=>!s.ended_at);const due=live.reduce((sum,s)=>sum+Math.max(0,gameAmount(s)+productAmount(s.id)-advanceAmount(s.id)),0);$('outstandingAmount').textContent=money(due);$('outstandingCount').textContent=live.length+' açık hesap · ön ödeme düşülmüş';}
+function updateOutstanding(){const live=state.sessions.filter(s=>!s.ended_at);const due=live.reduce((sum,s)=>sum+Math.max(0,gameAmount(s)+productAmount(s.id)-advanceAmount(s.id)),0);$('outstandingAmount').textContent=money(due);$('outstandingCount').textContent=live.length+' açık hesap · anlık tahmin (5 TL dilimi)';}
 function tick(){if($('app').hidden)return;updateOutstanding();for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
@@ -426,12 +426,23 @@ async function savePaymentRecord(){
    // Kapanış RPC'si birkaç saniye daha ücret yazabilir. Tamamen kart/nakit seçilmişse yeni kesin tutara uyarla.
    const actual=paymentTotal();
    $('receiptBody').hidden=true;$('receiptPrint').hidden=true;
-   $('paymentTitle').textContent='💳 Ödeme Al · Hesap Kapandı';
-   $('paymentSave').textContent='✓ Ödemeyi Kaydet';
+   // Sunucuda hesap kapandığında araya ikinci ödeme ekranı girmesin.
+   // Aynı işlem içerisinde ödeme kaydına devam ediyoruz.
    $('payDiscountType').value=discountType;$('payDiscount').value=discountInput;
-   if(fullCard){$('payCash').value='0';$('payCard').value=Math.max(0,actual-advanceAmount(id)).toFixed(2)}
-   else if(fullCash){$('payCard').value='0';$('payCash').value=Math.max(0,actual-advanceAmount(id)).toFixed(2)}
-   else{$('payCash').value=cash.toFixed(2);$('payCard').value=card.toFixed(2)}
+   // Kesin hesap birkaç saniye farklı olabilir: ikinci onay ekranı açmadan ödeme dağılımını güncelle.
+   // Tam kart veya tam nakitse tutarı kesin değere otomatik uyarla.
+   // Parçalı işlemde kullanıcı nakit tutarını koru, farkı kartta dengele.
+   const finalDue=Math.max(0,fromCents(cents(actual)-cents(advanceAmount(id))-cents(discountValue(Math.max(0,actual-advanceAmount(id))))));
+   if(fullCard){$('payCash').value='0';$('payCard').value=finalDue.toFixed(2)}
+   else if(fullCash){$('payCard').value='0';$('payCash').value=finalDue.toFixed(2)}
+   else{
+    if(cents(cash)>cents(finalDue)){
+     // Nakit seçimi yeni tutarı aşıyorsa otomatik değiştirmek yerine hatayı açıkça bildir.
+     throw Error('Kesin tutar değişti ve girilen nakit ödenecek tutarı aşıyor. Masa kapandı; Son İşlemler içinden ödeme tutarını yeniden gir.');
+    }
+    $('payCash').value=cash.toFixed(2);
+    $('payCard').value=fromCents(cents(finalDue)-cents(cash)).toFixed(2);
+   }
    updatePaymentPreview();
   }
   const finalDiscount=discountValue(Math.max(0,paymentTotal()-advanceAmount(id))),finalCash=Number($('payCash').value||0),finalCard=Number($('payCard').value||0);
@@ -463,7 +474,7 @@ $('receiptDialog').addEventListener('keydown',async e=>{
  e.preventDefault();e.stopPropagation();enterCloseBusy=true;
  try{
   $('payDiscountType').value='amount';$('payDiscount').value='0';
-  $('payCash').value='0';$('payCard').value=Math.max(0,paymentTotal()-advanceAmount(id)).toFixed(2);
+  $('payCash').value='0';$('payCard').value=Math.max(0,paymentTotal()-advanceAmount(paymentSessionId)).toFixed(2);
   updatePaymentPreview();
   await savePaymentRecord();
  }finally{enterCloseBusy=false;}
