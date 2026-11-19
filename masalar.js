@@ -212,7 +212,25 @@ function renderDesktop(){
    ? `<span class="desk-prepaid-dot ${advanceFor(s.id)?'paid':'unpaid'}" title="${advanceFor(s.id)?'Süreli hesap: açılış ücreti alındı':'Süreli hesap: açılış ücreti alınmadı'}" aria-label="${advanceFor(s.id)?'Açılış ücreti alındı':'Açılış ücreti alınmadı'}"></span>`
    : '';
   tile.innerHTML=`<span class="desk-tile-status">${s?'● DOLU':'● BOŞ'}</span>${paidMarker}<span class="desk-tile-clock" data-tile-time="${esc(t.id)}">${s?'—':'BOŞ'}</span><span class="desk-tile-art">${tableDeviceArt[kind]}</span><span class="desk-tile-name">${esc(t.name)}</span>`;
-  tile.addEventListener('click',()=>selectDeskTable(t.id));fragment.append(tile);
+  // Tek tık: masayı sol panelde seç. Çift tık: boşsa hesap aç, doluysa ödeme ekranı.
+  tile.addEventListener('click',()=>selectDeskTable(t.id));
+  tile.addEventListener('dblclick',async (event)=>{
+   event.preventDefault();
+   selectDeskTable(t.id);
+   // Açık bir modalın üstüne başka bir modal açılmasını önle.
+   if(document.querySelector('dialog[open]'))return;
+   const liveTable=state.tables.find(x=>x.id===t.id);
+   if(!liveTable)return;
+   const liveSession=active(liveTable);
+   if(liveSession){
+    if(tile.dataset.openingPayment==='true')return;
+    tile.dataset.openingPayment='true';
+    try{await showReceipt(liveSession.id)}
+    finally{tile.dataset.openingPayment='false'}
+   }else{openSessionDialog(t.id)}
+  });
+  tile.title='Tek tık: masayı seç · Çift tık: '+(s?'hesabı kapat / ödeme':'hesap aç');
+  fragment.append(tile);
  }
  grid.replaceChildren(fragment);
  if(!ts.length){$('selectedTablePanel').textContent='Henüz masa bulunamadı.';return;}
