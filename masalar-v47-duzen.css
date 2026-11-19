@@ -1,0 +1,42 @@
+/* V47 – Masa istatistikleri gizli, Son Islemler suruklenebilir. */
+#app #tableStatsHidden, #app #tableStatsHidden[hidden] { display:none!important; }
+/* Her sekme tamamen ayridir. */
+#app #tableWorkspace[hidden], #app #ordersDeskView[hidden], #app #reportsView[hidden],
+#app .desk-view-hidden { display:none!important; visibility:hidden!important; }
+@media (min-width:901px) {
+  #app .table-workspace { min-height:520px!important; }
+  #app .desktop-bottom-dock { flex:0 0 auto!important; min-height:0!important; }
+  #app #recentHistory {
+    height:var(--beta-recent-height,270px)!important;
+    max-height:none!important;
+    min-height:135px!important;
+    padding-top:16px!important;
+    position:relative;
+    overflow:hidden!important;
+    flex:0 0 auto!important;
+  }
+  #app #recentHistory #history {
+    flex:1 1 auto!important;
+    height:auto!important;
+    max-height:none!important;
+    min-height:35px!important;
+    overflow-y:auto!important;
+    overscroll-behavior-y:contain;
+  }
+}
+#app .recent-resize-handle {
+  height:14px;cursor:ns-resize;touch-action:none;
+  position:absolute;top:0;left:0;right:0;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:8px 8px 0 0;
+  background:linear-gradient(to bottom,rgba(255,255,255,.045),transparent);
+  z-index:2;
+}
+#app .recent-resize-handle span { display:block;width:76px;height:4px;border-radius:9px;background:#8c535b; }
+#app .recent-resize-handle:hover span,#app .recent-resize-handle:focus-visible span { background:#fa4252; }
+#app .recent-resize-handle:focus-visible { outline:2px solid #fa4252;outline-offset:1px; }
+@media(max-width:900px) {
+  #app #recentHistory {height:auto!important;max-height:none!important;}
+  #app #recentHistory #history {height:260px!important;max-height:260px!important;overflow-y:auto!important;}
+  #app .recent-resize-handle{display:none;}
+}
