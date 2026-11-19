@@ -33,3 +33,7 @@
  #receiptDialog .receipt-head,#receiptDialog .receipt-actions,#receiptWarning{display:none!important}
  .receipt-line{border-color:#aaa}.receipt-total{border-top:2px solid #000}.receipt-brand span{color:#000}
 }
+
+/* V4 – Manuel adisyon */
+#manualDialog .preview{margin-top:12px}#manualDialog{width:min(94vw,500px)}
+.card .actions button{min-width:115px} .order-detail hr{border:0;border-top:1px solid #524247;margin:12px 0}
