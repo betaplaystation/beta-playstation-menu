@@ -37,3 +37,6 @@
 /* V4 – Manuel adisyon */
 #manualDialog .preview{margin-top:12px}#manualDialog{width:min(94vw,500px)}
 .card .actions button{min-width:115px} .order-detail hr{border:0;border-top:1px solid #524247;margin:12px 0}
+
+/* V5: Ayri kasa adisyon katalogu */
+.charges-dialog{width:min(96vw,670px)}.charge-list{max-height:260px;overflow:auto;margin:12px 0 18px}.charge-row{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #453139}.charge-row>div{min-width:0}.charge-switch{display:flex;align-items:center;gap:10px}.charge-switch input{width:20px;height:20px;margin:0}

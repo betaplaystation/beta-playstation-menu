@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
-const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],user:null,refreshBusy:false};
+const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],user:null,refreshBusy:false};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -24,10 +24,10 @@ async function reload(silent=false){
    db.from('cafe_tables').select('*').order('created_at'),
    db.from('cafe_table_rates').select('*'),
    db.from('cafe_sessions').select('*').order('started_at',{ascending:false}).limit(250),
-   db.from('products').select('id,name,price,available,stock_tracking_enabled,stock_quantity').order('name')
+   db.from('cafe_charge_catalog').select('id,name,category,price,active,sort_order').order('category').order('name')
   ]);
   for(const x of r)if(x.error)throw x.error;
-  [state.tables,state.rates,state.sessions,state.products]=r.map(x=>x.data||[]);
+  [state.tables,state.rates,state.sessions,state.charges]=r.map(x=>x.data||[]);
   const interesting=state.sessions.filter(s=>!s.ended_at).concat(state.sessions.filter(s=>s.ended_at).slice(0,15));
   const sessionIds=interesting.map(s=>s.id);
   state.links=[];state.orders=[];state.manualItems=[];
@@ -87,13 +87,13 @@ function openManualDialog(id){
  manualSessionId=id;
  $('manualForm').reset();
  $('manualSession').textContent=state.tables.find(t=>t.id===s.table_id)?.name||'Masa';
- const ps=state.products.filter(p=>p.available);
- $('manualProduct').innerHTML='<option value="">Ürün seç</option>'+ps.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} · ${money(p.price)}${p.stock_tracking_enabled?' (Stok: '+Number(p.stock_quantity)+')':''}</option>`).join('');
+ const ps=state.charges.filter(p=>p.active);
+ $('manualProduct').innerHTML='<option value="">Ürün seç</option>'+ps.map(p=>`<option value="${esc(p.id)}">${esc(p.category)} · ${esc(p.name)} · ${money(p.price)}</option>`).join('');
  $('manualQty').value='1';updateManualPreview();$('manualDialog').showModal();
 }
 function updateManualPreview(){
- const p=state.products.find(x=>x.id===$('manualProduct').value),q=Number($('manualQty').value);
- $('manualPreview').textContent=p&&Number.isInteger(q)&&q>=1&&q<=99?`Birim fiyat: ${money(p.price)} · Toplam: ${money(q*Number(p.price))}${p.stock_tracking_enabled?' · Stok: '+p.stock_quantity:''}`:'Ürün ve adet seçin.';
+ const p=state.charges.find(x=>x.id===$('manualProduct').value),q=Number($('manualQty').value);
+ $('manualPreview').textContent=p&&Number.isInteger(q)&&q>=1&&q<=99?`Birim fiyat: ${money(p.price)} · Toplam: ${money(q*Number(p.price))}`:'Ürün ve adet seçin.';
 }
 $('manualProduct').addEventListener('change',updateManualPreview);
 $('manualQty').addEventListener('input',updateManualPreview);
@@ -103,10 +103,36 @@ $('manualForm').addEventListener('submit',async e=>{
   if(!manualSessionId)throw Error('Masa seçilmedi');
   const id=$('manualProduct').value,qty=Number($('manualQty').value);
   if(!id||!Number.isInteger(qty)||qty<1||qty>99)throw Error('Ürün ve 1–99 arası adet seçin.');
-  const r=await db.rpc('cafe_add_manual_item',{p_session_id:manualSessionId,p_product_id:id,p_qty:qty});
+  const r=await db.rpc('cafe_add_catalog_charge',{p_session_id:manualSessionId,p_catalog_item_id:id,p_qty:qty});
   if(r.error)throw r.error;
   $('manualDialog').close();await reload();msg('Ürün açık masa adisyonuna eklendi.');
  }catch(err){msg('Adisyon eklenemedi: '+err.message,true)}finally{b.disabled=false}
+});
+// V5: kasa icin ayri adisyon kalemleri. Musteri urunleri (products) hic degismez.
+function renderChargeList(){
+ const list=$('chargeList');
+ list.innerHTML=state.charges.length?state.charges.map(c=>`<div class="charge-row"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.category)} · ${money(c.price)} · ${c.active?'Aktif':'Pasif'}</div></div><button type="button" class="secondary" data-edit-charge="${esc(c.id)}">Düzenle</button></div>`).join(''):'<p class="muted">Henüz kasa adisyon kalemi eklenmedi.</p>';
+ list.querySelectorAll('[data-edit-charge]').forEach(b=>b.onclick=()=>{
+  const c=state.charges.find(x=>x.id===b.dataset.editCharge);if(!c)return;
+  $('chargeId').value=c.id;$('chargeName').value=c.name;$('chargeCategory').value=c.category;
+  $('chargePrice').value=c.price;$('chargeActive').checked=c.active;
+ });
+}
+function clearChargeForm(){
+ $('chargeForm').reset();$('chargeId').value='';$('chargeCategory').value='Diğer';$('chargeActive').checked=true;
+}
+$('chargeClear').onclick=clearChargeForm;
+$('manageCharges').onclick=()=>{clearChargeForm();renderChargeList();$('chargesDialog').showModal()};
+$('chargeForm').addEventListener('submit',async e=>{
+ e.preventDefault();const btn=e.currentTarget.querySelector('[type=submit]');btn.disabled=true;
+ try{
+  const name=$('chargeName').value.trim(),category=$('chargeCategory').value.trim(),raw=$('chargePrice').value;
+  const price=Number(raw);
+  if(!name||!category||raw.trim()===''||!Number.isFinite(price)||price<0)throw Error('Ad, kategori ve fiyatı kontrol edin.');
+  const r=await db.rpc('cafe_save_charge',{p_id:$('chargeId').value||null,p_name:name,p_category:category,p_price:price,p_active:$('chargeActive').checked});
+  if(r.error)throw r.error;
+  await reload(true);renderChargeList();clearChargeForm();msg('Kasa adisyon kalemi kaydedildi.');
+ }catch(err){msg('Adisyon kalemi kaydedilemedi: '+err.message,true)}finally{btn.disabled=false}
 });
 let receiptSessionId=null;
 let receiptClosed=false;
