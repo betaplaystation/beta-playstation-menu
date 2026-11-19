@@ -128,11 +128,28 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
   }
   const secs=Math.max(0,Math.floor((Date.parse(s.ended_at)-Date.parse(s.started_at))/1000));
   const total=Number(s.final_total_amount??(Number(s.final_game_amount||0)+Number(s.final_order_amount||0)));
-  return `<div class="historyrow recent-event recent-close"><div class="recent-info"><strong>🔴 ${name} — HESAP KAPANDI</strong><div>Kapanış: ${when} · Süre: ${Math.ceil(secs/60)} dakika</div><div><b>TOPLAM: ${money(total)}</b></div></div><div class="history-actions"><button class="secondary" type="button" data-receipt-history="${esc(s.id)}">🧾 Rapor / Adisyon</button>${state.payments.some(p=>p.session_id===s.id)?`<span class="payment-ok">✓ Ödendi</span>`:`<button class="payment-history-btn" type="button" data-pay-history="${esc(s.id)}">💳 Ödeme Al</button>`}</div></div>`;
+  return `<div class="historyrow recent-event recent-close"><div class="recent-info"><strong>🔴 ${name} — HESAP KAPANDI</strong><div>Kapanış: ${when} · Süre: ${Math.ceil(secs/60)} dakika</div><div><b>TOPLAM: ${money(total)}</b></div></div><div class="history-actions"><button class="secondary" type="button" data-receipt-history="${esc(s.id)}">🧾 Rapor / Adisyon</button>${state.payments.some(p=>p.session_id===s.id)?`<span class="payment-ok">✓ Ödendi</span>`:`<button class="payment-history-btn" type="button" data-pay-history="${esc(s.id)}">💳 Ödeme Al</button>`}<button class="secondary restore-history-btn" type="button" data-restore-session="${esc(s.id)}">↩ Hesabı Geri Al</button></div></div>`;
  }).join(''):'<p class="muted">Henüz hesap açılışı veya kapanışı yok.</p>';
  updateOutstanding();
- document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));document.querySelectorAll('[data-pay-history]').forEach(b=>b.onclick=()=>openPayment(b.dataset.payHistory));renderDesktop();tick();}
+ document.querySelectorAll('[data-restore-session]').forEach(b=>b.onclick=()=>openRestoreDialog(b.dataset.restoreSession));document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));document.querySelectorAll('[data-pay-history]').forEach(b=>b.onclick=()=>openPayment(b.dataset.payHistory));renderDesktop();tick();}
 
+// V38: yanlışlıkla kapatılan fakat ödeme kaydı olmayan hesabı güvenli aç.
+let restoreId=null;
+function openRestoreDialog(id){
+ const s=state.sessions.find(x=>x.id===id&&x.ended_at);if(!s)return;
+ restoreId=id;
+ const t=state.tables.find(x=>x.id===s.table_id);
+ $('restoreDetails').textContent=`${t?.name||'Masa'} · ${new Date(s.started_at).toLocaleString('tr-TR')} açıldı · ${new Date(s.ended_at).toLocaleString('tr-TR')} kapandı · ${money(s.final_total_amount||0)}`;
+ $('restoreDialog').showModal();
+}
+$('restoreConfirm').addEventListener('click',async()=>{
+ if(!restoreId)return;
+ const btn=$('restoreConfirm');btn.disabled=true;
+ try{
+  const r=await db.rpc('cafe_restore_closed_v38',{p_session_id:restoreId});if(r.error)throw r.error;
+  $('restoreDialog').close();restoreId=null;await reload();msg('Kapatılmış hesap yeniden açıldı. Kapanış tutarı kaldırıldı; süre işlemeye devam ediyor.');
+ }catch(e){msg('Hesap geri alınamadı: '+e.message,true);alert('Hesap geri alınamadı: '+e.message)}finally{btn.disabled=false}
+});
 // V30: kompakt masa planı, seçilen masanın bütün işlemleri sol detay panelinde.
 const tableDeviceArt={
  lounge:'<svg viewBox="0 0 72 52" aria-hidden="true"><rect x="9" y="15" width="54" height="27" rx="8" fill="#8f3049" stroke="#ff819d" stroke-width="2"/><rect x="14" y="23" width="44" height="18" rx="6" fill="#bb4562"/><path d="M10 30H5v13h62V30h-5" fill="#6b2339" stroke="#ff819d" stroke-width="2"/><path d="M18 45v4m36-4v4" stroke="#f6d2d9" stroke-width="4" stroke-linecap="round"/><path d="M32 5h8v7h-8z" fill="#eeeeff"/><path d="M29 10h14" stroke="#eeeeff" stroke-width="2"/></svg>',
@@ -151,6 +168,14 @@ function selectDeskTable(id){
  panel.replaceChildren();
  const label=document.createElement('div');label.className='selected-heading';label.textContent='MASA BİLGİLERİ · '+t.name;
  panel.append(label);
+ const session=active(t);
+ if(session){
+  const opener=document.createElement('div');opener.className='sidebar-opening';
+  const started=document.createElement('span');started.textContent='🕓 Açılış saati: '+new Date(session.started_at).toLocaleString('tr-TR');
+  const edit=document.createElement('button');edit.type='button';edit.className='secondary';edit.textContent='Değiştir';
+  edit.onclick=()=>{openManageSession(session.id);$('manageStart').focus();};
+  opener.append(started,edit);panel.append(opener);
+ }
  if(selected){selected.classList.add('desktop-detail');panel.append(selected);}
  document.querySelectorAll('.desk-tile').forEach(el=>{const active=el.dataset.tableId===id;el.classList.toggle('is-selected',active);el.setAttribute('aria-pressed',String(active));});
  tick();
@@ -437,32 +462,48 @@ function updatePreview(){if(!currentTable)return;const n=Number($('controllers')
 function refreshAdvanceControls(){const timed=$('mode').value==='timed';$('advanceRow').hidden=!timed;$('advanceMethodRow').hidden=!timed||!$('advancePaid').checked;if(!timed)$('advancePaid').checked=false;}
 $('mode').addEventListener('change',refreshAdvanceControls);$('advancePaid').addEventListener('change',refreshAdvanceControls);
 $('sessionForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const timed=$('mode').value==='timed',val=timed?Number($('entryValue').value):null;if(timed&&(!Number.isFinite(val)||val<=0))throw Error('Pozitif bir dakika veya tutar gir.');const r=await db.rpc('cafe_open_session',{p_table_id:$('sessionTable').value,p_controllers:Number($('controllers').value),p_mode:$('mode').value,p_entry_type:timed?$('entryType').value:null,p_entry_value:val});if(r.error)throw r.error;let advanceWarning='';if(timed&&$('advancePaid').checked){const ar=await db.rpc('cafe_mark_advance_v26',{p_session_id:r.data,p_method:$('advanceMethod').value});if(ar.error)advanceWarning='ÖNEMLİ: Hesap açıldı ama ön ödeme kaydı başarısız: '+ar.error.message;}$('sessionDialog').close();await reload();msg(advanceWarning||'Hesap açıldı, süre başladı.',Boolean(advanceWarning));}catch(x){msg(x.message,true)}finally{b.disabled=false}});
-let manualSessionId=null;
+// V38: müşteri QR ürünlerinden ayrı, çoklu kasa adisyon sepeti.
+let manualSessionId=null,manualPickId=null,manualQueue=new Map(),manualBusy=false;
+const manualCatalogProduct=id=>state.charges.find(p=>p.id===id&&p.active);
+function renderManualQueue(){
+ const entries=[...manualQueue].map(([id,qty])=>({p:manualCatalogProduct(id),id,qty})).filter(x=>x.p);
+ $('manualQueued').innerHTML=entries.length?entries.map(({p,id,qty})=>`<div class="manual-queue-line"><span>${esc(p.name)} · ${qty} × ${money(p.price)}</span><strong>${money(qty*Number(p.price))}</strong><button type="button" class="secondary" data-queue-remove="${esc(id)}">Sil</button></div>`).join(''):'<p class="muted">Henüz ürün seçilmedi.</p>';
+ const total=entries.reduce((s,x)=>s+x.qty*Number(x.p.price),0);
+ $('manualPreview').textContent=`${entries.length} farklı kalem · ${money(total)} toplam`;
+ $('manualQueued').querySelectorAll('[data-queue-remove]').forEach(b=>b.onclick=()=>{manualQueue.delete(b.dataset.queueRemove);renderManualQueue()});
+}
 function openManualDialog(id){
  const s=state.sessions.find(x=>x.id===id&&!x.ended_at);if(!s)return;
- manualSessionId=id;
- $('manualForm').reset();
+ manualSessionId=id;manualPickId=null;manualQueue=new Map();$('manualForm').reset();$('manualPick').hidden=true;
  $('manualSession').textContent=state.tables.find(t=>t.id===s.table_id)?.name||'Masa';
- const ps=state.charges.filter(p=>p.active);
- $('manualProduct').innerHTML='<option value="">Ürün seç</option>'+ps.map(p=>`<option value="${esc(p.id)}">${esc(p.category)} · ${esc(p.name)} · ${money(p.price)}</option>`).join('');
- $('manualQty').value='1';updateManualPreview();$('manualDialog').showModal();
+ const products=state.charges.filter(p=>p.active);
+ $('manualCatalog').innerHTML=products.length?products.map(p=>`<button type="button" class="manual-catalog-item" data-catalog-pick="${esc(p.id)}"><strong>${esc(p.name)}</strong><small>${esc(p.category)}</small><b>${money(p.price)}</b></button>`).join(''):'<p class="muted">Aktif kasa adisyon kalemi yok. Önce Adisyon Kalemleri bölümünden ekle.</p>';
+ $('manualCatalog').querySelectorAll('[data-catalog-pick]').forEach(b=>b.onclick=()=>{
+  manualPickId=b.dataset.catalogPick;const p=manualCatalogProduct(manualPickId);if(!p)return;
+  $('manualPickedName').textContent=p.name+' · '+money(p.price);$('manualQty').value='1';$('manualPick').hidden=false;$('manualQty').focus();
+  $('manualCatalog').querySelectorAll('.manual-catalog-item').forEach(c=>c.classList.toggle('picked',c===b));
+ });
+ renderManualQueue();$('manualDialog').showModal();
 }
-function updateManualPreview(){
- const p=state.charges.find(x=>x.id===$('manualProduct').value),q=Number($('manualQty').value);
- $('manualPreview').textContent=p&&Number.isInteger(q)&&q>=1&&q<=99?`Birim fiyat: ${money(p.price)} · Toplam: ${money(q*Number(p.price))}`:'Ürün ve adet seçin.';
-}
-$('manualProduct').addEventListener('change',updateManualPreview);
-$('manualQty').addEventListener('input',updateManualPreview);
+$('manualQueueAdd').addEventListener('click',()=>{
+ if(!manualPickId)return msg('Önce ürün seç.',true);
+ const q=Number($('manualQty').value);if(!Number.isInteger(q)||q<1||q>99)return msg('1 ile 99 arasında adet gir.',true);
+ const existing=manualQueue.get(manualPickId)||0;
+ if(existing+q>99)return msg('Bir ürün için en fazla 99 adet eklenebilir.',true);
+ manualQueue.set(manualPickId,existing+q);$('manualPick').hidden=true;manualPickId=null;
+ $('manualCatalog').querySelectorAll('.manual-catalog-item').forEach(c=>c.classList.remove('picked'));
+ renderManualQueue();
+});
 $('manualForm').addEventListener('submit',async e=>{
- e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;
+ e.preventDefault();if(manualBusy)return;
+ if(!manualSessionId||!manualQueue.size)return msg('Kaydetmek için en az bir ürün eklemelisin.',true);
+ manualBusy=true;const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;
  try{
-  if(!manualSessionId)throw Error('Masa seçilmedi');
-  const id=$('manualProduct').value,qty=Number($('manualQty').value);
-  if(!id||!Number.isInteger(qty)||qty<1||qty>99)throw Error('Ürün ve 1–99 arası adet seçin.');
-  const r=await db.rpc('cafe_add_catalog_charge',{p_session_id:manualSessionId,p_catalog_item_id:id,p_qty:qty});
+  const cart=[...manualQueue].map(([id,qty])=>({id,qty}));
+  const r=await db.rpc('cafe_add_catalog_cart_v38',{p_session_id:manualSessionId,p_items:cart});
   if(r.error)throw r.error;
-  $('manualDialog').close();await reload();msg('Ürün açık masa adisyonuna eklendi.');
- }catch(err){msg('Adisyon eklenemedi: '+err.message,true)}finally{b.disabled=false}
+  $('manualDialog').close();manualQueue.clear();await reload();msg('Tüm kasa adisyon kalemleri tek seferde eklendi.');
+ }catch(err){msg('Adisyon kaydedilemedi: '+err.message,true)}finally{manualBusy=false;b.disabled=false}
 });
 // V5: kasa icin ayri adisyon kalemleri. Musteri urunleri (products) hic degismez.
 function renderChargeList(){
@@ -502,7 +543,8 @@ function openManageSession(id){
  $('manageTarget').innerHTML='<option value="">Hedef masa seç</option>'+state.tables.filter(x=>x.active&&x.id!==s.table_id&&!active(x)).map(x=>`<option value="${esc(x.id)}">${esc(x.name)} · ${money(rate(x.id,s.controllers))}/saat</option>`).join('');
  $('manageControllers').value=String(s.controllers);
  $('manageDelta').value='15';$('timedEdit').hidden=s.mode!=='timed';
- $('manageInfo').textContent=`${s.controllers} kol · ${s.mode==='timed'?'Süreli':'Süresiz'} · Oyun: ${money(gameAmount(s))}`;
+ $('manageInfo').textContent=`${s.controllers} kol · ${s.mode==='timed'?'Süreli':'Süresiz'} · Güncel tarife: ${money(rate(s.table_id,s.controllers))}/saat · Oyun: ${money(gameAmount(s))}`;
+ updateManageRatePreview();
  $('manageDialog').showModal();
 }
 async function manageAction(fn,args,success){
@@ -513,6 +555,14 @@ async function manageAction(fn,args,success){
   $('manageDialog').close();await reload();msg(success);
  }catch(e){msg('İşlem yapılamadı: '+e.message,true)}finally{buttons.forEach(x=>x.disabled=false)}
 }
+function updateManageRatePreview(){
+ const s=state.sessions.find(x=>x.id===manageSessionId);if(!s)return;
+ const n=Number($('manageControllers').value),hour=rate(s.table_id,n);
+ let line=$('manageRatePreview');if(!line){line=document.createElement('div');line.id='manageRatePreview';line.className='manage-rate-preview';$('manageControllers').closest('label').after(line);}
+ line.textContent=`Mevcut: ${s.controllers} Kol · ${money(rate(s.table_id,s.controllers))}/saat  →  Yeni: ${n} Kol · ${money(hour)}/saat`;
+ line.classList.toggle('invalid',hour<=0);
+}
+$('manageControllers').addEventListener('change',updateManageRatePreview);
 $('manageDialog').querySelectorAll('[data-operation]').forEach(b=>b.addEventListener('click',async()=>{
  const op=b.dataset.operation;
  if(op==='start'){
@@ -526,8 +576,9 @@ $('manageDialog').querySelectorAll('[data-operation]').forEach(b=>b.addEventList
   await manageAction('cafe_move_session_v10',{p_target_table_id:id},'Hesap başka masaya taşındı; eski süre eski tarifede kaldı.');
  }else if(op==='controllers'){
   const n=Number($('manageControllers').value);
-  if(!confirm('Kol değişikliğinden sonraki süre yeni kol fiyatına göre hesaplanacak. Onaylıyor musun?'))return;
-  await manageAction('cafe_change_controllers_v10',{p_controllers:n},'Kol sayısı yeni fiyatıyla güncellendi.');
+  if(rate(state.sessions.find(s=>s.id===manageSessionId)?.table_id,n)<=0)return msg('Bu kol için geçerli saatlik fiyat tanımlı değil.',true);
+  if(!confirm(`${n} kol tarifesine geçilecek: ${money(rate(state.sessions.find(s=>s.id===manageSessionId)?.table_id,n))}/saat. Önceki süre eski tarifede kalır. Onaylıyor musun?`))return;
+  await manageAction('cafe_change_controllers_v38',{p_controllers:n},'Kol sayısı değiştirildi; bundan sonraki süre yeni kol tarifesinden hesaplanacak.');
  }else if(op==='plus'||op==='minus'){
   const m=Number($('manageDelta').value);
   if(!Number.isInteger(m)||m<1||m>1440)return msg('1–1440 dakika gir.',true);
