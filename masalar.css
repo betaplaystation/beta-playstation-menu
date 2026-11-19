@@ -56,3 +56,34 @@
 .card.card-closed{background:linear-gradient(rgba(0,0,0,.42),rgba(0,0,0,.42)),var(--closed-color,#84232b);border:2px solid var(--closed-color,#84232b)}
 .card.card-closed .tag{background:rgba(10,10,12,.75);color:#fff}
 #tableColor{height:50px;padding:5px 8px;cursor:pointer}
+
+
+/* V9 — Geniş ekran Windows masaüstü yerleşimi. İşlevlere dokunmaz. */
+@media (min-width: 1000px) {
+  header { padding: 16px clamp(24px, 2.2vw, 52px); }
+  .shell { width: 100%; max-width: none; margin: 0; padding: 24px clamp(24px, 2.2vw, 52px) 48px; }
+  .shell #app { width:100%; max-width: none; }
+  .headrow { padding: 2px 0 8px; }
+  .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 14px 0 20px; }
+  .cards { grid-template-columns: repeat(auto-fill,minmax(255px,1fr)); align-items: stretch; gap: 14px; }
+  .card { padding: 17px; min-height: 240px; }
+  #recentHistory { width: 100%; }
+  .report-panel { width:100%; }
+  .report-table { min-width: 900px; }
+}
+@media (min-width: 1500px) {
+  .cards { grid-template-columns: repeat(auto-fill,minmax(275px,1fr)); gap:16px; }
+  .card { padding: 19px; }
+}
+@media (min-width: 2000px) {
+  .cards { grid-template-columns: repeat(auto-fill,minmax(300px,1fr)); }
+}
+@media (min-width: 1000px) {
+  .card { display:flex; flex-direction:column; }
+  .card .actions:last-child { margin-top:auto; padding-top:12px; }
+  .stat { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .stat b { font-variant-numeric:tabular-nums; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card, button { transition: border-color .15s ease,background-color .15s ease; }
+}
