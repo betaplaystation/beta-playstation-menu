@@ -177,12 +177,19 @@ function renderOrdersDesk(){
  }).join(''):'<p class="muted">Açık masa hesaplarına bağlı QR siparişi bulunamadı. Tüm siparişler Yönetici Paneli → Siparişler bölümündedir.</p>';
  list.querySelectorAll('[data-desk-select]').forEach(b=>b.addEventListener('click',()=>{setDeskTab('tables');selectDeskTable(b.dataset.deskSelect)}));
 }
+// V32: Masalar, Siparişler ve Raporlar birbirinden tamamen ayrı görünümlerdir.
+// Böylece Siparişler sayfasında raporlar ve Son İşlemler görünmez.
 function setDeskTab(tab){
+ if(!['tables','orders','reports'].includes(tab))tab='tables';
  currentDeskTab=tab;
  $('tableWorkspace').hidden=tab!=='tables';
  $('ordersDeskView').hidden=tab!=='orders';
+ $('reportsView').hidden=tab!=='reports';
+ document.querySelector('.stats').hidden=tab!=='tables';
+ $('recentHistory').hidden=tab!=='tables';
  $('tabTables').classList.toggle('active',tab==='tables');
  $('tabOrders').classList.toggle('active',tab==='orders');
+ $('showReports').classList.toggle('active',tab==='reports');
  if(tab==='orders')renderOrdersDesk();
 }
 $('tabTables').addEventListener('click',()=>setDeskTab('tables'));
@@ -570,7 +577,7 @@ $('receiptDialog').addEventListener('keydown',async e=>{
 // V7 Rapor ekranı: geçmiş hesaplar ana masa yükleme sınırından bağımsız alınır.
 const reportDate=d=>{const a=new Date(d);return `${a.getFullYear()}-${String(a.getMonth()+1).padStart(2,'0')}-${String(a.getDate()).padStart(2,'0')}`};
 function initReportDates(){const now=new Date();$('reportTo').value=reportDate(now);const earlier=new Date(now);earlier.setDate(earlier.getDate()-29);$('reportFrom').value=reportDate(earlier)}
-function switchReports(show){$('reportsView').hidden=!show;$('tableWorkspace').hidden=show;$('ordersDeskView').hidden=true;document.querySelector('.stats').hidden=show;$('recentHistory').hidden=show;if(show){$('reportTable').innerHTML='<option value="">Tüm masalar</option>'+state.tables.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');$('reportsView').scrollIntoView({behavior:'smooth',block:'start'});}else {setDeskTab('tables');window.scrollTo({top:0,behavior:'smooth'});}}
+function switchReports(show){if(show){setDeskTab('reports');$('reportTable').innerHTML='<option value="">Tüm masalar</option>'+state.tables.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');$('reportsView').scrollIntoView({behavior:'smooth',block:'start'});}else{setDeskTab('tables');window.scrollTo({top:0,behavior:'smooth'});}}
 $('showReports').onclick=()=>{switchReports(true);if(!$('reportRows').children.length)loadReport()};
 $('backToTables').onclick=()=>switchReports(false);
 $('reportFilters').addEventListener('submit',e=>{e.preventDefault();loadReport()});
