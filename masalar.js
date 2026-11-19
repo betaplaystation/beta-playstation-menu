@@ -48,7 +48,7 @@ async function reload(silent=false){
    db.from('cafe_tables').select('*').order('sort_order',{ascending:true}).order('created_at',{ascending:true}),
    db.from('cafe_table_rates').select('*'),
    db.from('cafe_sessions').select('*').order('started_at',{ascending:false}).limit(250),
-   db.from('cafe_charge_catalog').select('id,name,category,price,active,sort_order').order('category').order('name')
+   db.from('cafe_charge_catalog').select('id,name,category,price,active,sort_order').order('sort_order',{ascending:true}).order('name',{ascending:true})
   ]);
   for(const x of r)if(x.error)throw x.error;
   [state.tables,state.rates,state.sessions,state.charges]=r.map(x=>x.data||[]);
@@ -564,7 +564,23 @@ $('manualForm').addEventListener('submit',async e=>{
 // V5: kasa icin ayri adisyon kalemleri. Musteri urunleri (products) hic degismez.
 function renderChargeList(){
  const list=$('chargeList');
- list.innerHTML=state.charges.length?state.charges.map(c=>`<div class="charge-row"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.category)} · ${money(c.price)} · ${c.active?'Aktif':'Pasif'}</div></div><button type="button" class="secondary" data-edit-charge="${esc(c.id)}">Düzenle</button></div>`).join(''):'<p class="muted">Henüz kasa adisyon kalemi eklenmedi.</p>';
+ list.innerHTML=state.charges.length?state.charges.map((c,index)=>`<div class="charge-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><strong>${esc(c.name)}</strong><div class="muted">${esc(c.category)} · ${money(c.price)} · ${c.active?'Aktif':'Pasif'}</div></div><div style="display:flex;align-items:center;gap:6px"><label class="muted" style="display:flex;align-items:center;gap:5px">Sıra <input aria-label="${esc(c.name)} sırası" data-charge-order="${esc(c.id)}" type="number" min="0" max="999999" value="${Number(c.sort_order)||0}" style="width:78px;margin:0;padding:7px"/></label><button type="button" class="secondary" data-move-charge="${esc(c.id)}" data-direction="up" ${index===0?'disabled':''} title="Yukarı taşı">↑</button><button type="button" class="secondary" data-move-charge="${esc(c.id)}" data-direction="down" ${index===state.charges.length-1?'disabled':''} title="Aşağı taşı">↓</button><button type="button" class="secondary" data-edit-charge="${esc(c.id)}">Düzenle</button></div></div>`).join(''):'<p class="muted">Henüz kasa adisyon kalemi eklenmedi.</p>';
+ list.querySelectorAll('[data-charge-order]').forEach(input=>input.addEventListener('change',async()=>{
+  const value=Number(input.value);if(!Number.isSafeInteger(value)||value<0||value>999999){msg('Sıra 0 ile 999999 arasında bir tam sayı olmalı.',true);renderChargeList();return;}
+  input.disabled=true;
+  try{const r=await db.rpc('cafe_set_charge_order_v45',{p_item_id:input.dataset.chargeOrder,p_sort_order:value});if(r.error)throw r.error;await reload(true);renderChargeList();msg('Adisyon sırası güncellendi.');}
+  catch(err){msg('Sıra kaydedilemedi: '+err.message,true);input.disabled=false;}
+ }));
+ list.querySelectorAll('[data-move-charge]').forEach(b=>b.addEventListener('click',async()=>{
+  const ix=state.charges.findIndex(c=>c.id===b.dataset.moveCharge);const nx=ix+(b.dataset.direction==='up'?-1:1);if(ix<0||nx<0||nx>=state.charges.length)return;
+  b.disabled=true;
+  try{
+   const first=state.charges[ix],second=state.charges[nx];
+   // Ara sıralama değerleri eşit olsa bile tam sıra değişimi için atomik işlem.
+   const r=await db.rpc('cafe_swap_charge_order_v45',{p_first_id:first.id,p_second_id:second.id});if(r.error)throw r.error;
+   await reload(true);renderChargeList();msg('Adisyon sırası değiştirildi.');
+  }catch(err){msg('Sıra değiştirilemedi: '+err.message,true);b.disabled=false;}
+ }));
  list.querySelectorAll('[data-edit-charge]').forEach(b=>b.onclick=()=>{
   const c=state.charges.find(x=>x.id===b.dataset.editCharge);if(!c)return;
   $('chargeId').value=c.id;$('chargeName').value=c.name;$('chargeCategory').value=c.category;
