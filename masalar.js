@@ -159,25 +159,54 @@ const tableDeviceArt={
  billiards:'<svg viewBox="0 0 72 52" aria-hidden="true"><rect x="5" y="6" width="62" height="40" rx="5" fill="#653c1c"/><rect x="10" y="11" width="52" height="30" rx="3" fill="#138a5c"/><g fill="#131619"><circle cx="11" cy="12" r="4"/><circle cx="61" cy="12" r="4"/><circle cx="11" cy="40" r="4"/><circle cx="61" cy="40" r="4"/></g><circle cx="26" cy="24" r="4" fill="#fafafa"/><circle cx="43" cy="31" r="4" fill="#f4d75a"/><circle cx="48" cy="20" r="4" fill="#fff"/></svg>'
 };
 function selectDeskTable(id){
- const ts=state.tables.filter(t=>t.active);
- const t=ts.find(t=>t.id===id);
- if(!t)return;
+ const t=state.tables.find(x=>x.id===id&&x.active);if(!t)return;
  selectedTableId=id;
- const selected=desktopFullCards.get(id);
- const panel=$('selectedTablePanel');
- panel.replaceChildren();
- const label=document.createElement('div');label.className='selected-heading';label.textContent='MASA BİLGİLERİ · '+t.name;
- panel.append(label);
- const session=active(t);
- if(session){
-  const opener=document.createElement('div');opener.className='sidebar-opening';
-  const started=document.createElement('span');started.textContent='🕓 Açılış saati: '+new Date(session.started_at).toLocaleString('tr-TR');
-  const edit=document.createElement('button');edit.type='button';edit.className='secondary';edit.textContent='Değiştir';
-  edit.onclick=()=>{openManageSession(session.id);$('manageStart').focus();};
-  opener.append(started,edit);panel.append(opener);
+ const panel=$('selectedTablePanel');panel.replaceChildren();
+ const heading=document.createElement('div');heading.className='selected-heading';heading.textContent='MASA · '+t.name;panel.append(heading);
+ const s=active(t);
+ const box=document.createElement('div');box.className='side-summary';
+ if(!s){
+  box.innerHTML='<div class="side-empty">Bu masada açık hesap bulunmuyor.</div><button class="side-primary" type="button" id="sideOpenAccount">▶ Hesap Aç</button>';
+  panel.append(box);$('sideOpenAccount').onclick=()=>openSessionDialog(t.id);
+ }else{
+  const date=new Date(s.started_at),local=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  const end=new Date(date.getTime()+Number(s.planned_seconds||0)*1000);
+  const endLocal=new Intl.DateTimeFormat('tr-TR',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}).format(end);
+  box.innerHTML=`
+  <label class="side-label">🕓 Açılış tarihi ve saati
+   <input id="sideStartTime" type="datetime-local" value="${local}" aria-label="Açılış tarihi ve saatini doğrudan düzenle">
+  </label>
+  ${s.mode==='timed'?`<div class="side-line"><span>🕔 Bitiş saati</span><strong>${esc(endLocal)}</strong></div><div class="side-line"><span>⏳ Kalan süre</span><strong class="side-remain" data-left="${s.id}">—</strong></div>`:''}
+  <label class="side-label">🎮 Kol sayısı
+   <select id="sideControllers">${[1,2,3,4].map(n=>`<option value="${n}" ${n===Number(s.controllers)?'selected':''}>${n} Kol · ${esc(money(rate(t.id,n)))}/saat</option>`).join('')}</select>
+  </label>
+  <div class="side-line"><span>⏱ Geçen süre</span><strong data-timer="${s.id}">—</strong></div>
+  <div class="side-line"><span>🎮 Oyun ücreti</span><strong data-amount="${s.id}">${esc(money(gameAmount(s)))}</strong></div>
+  <div class="side-line"><span>🧾 QR + Adisyon</span><strong>${esc(money(productAmount(s.id)))}</strong></div>
+  <div class="side-line side-total"><span>💰 Toplam ücret</span><strong data-total="${s.id}">${esc(money(gameAmount(s)+productAmount(s.id)))}</strong></div>
+  <button class="side-manual" id="sideManual" type="button">＋ Adisyon Ekle</button>
+  <button class="side-primary" id="sideClose" type="button">💳 Hesap Kes</button>`;
+  panel.append(box);
+  $('sideManual').onclick=()=>openManualDialog(t.id);
+  $('sideClose').onclick=()=>showReceipt(s.id);
+  $('sideStartTime').addEventListener('change',async e=>{
+   const input=e.currentTarget,value=input.value;
+   if(!value||Number.isNaN(new Date(value).getTime())){msg('Açılış saati geçersiz.',true);return;}
+   if(!confirm('Açılış tarihi ve saati güncellensin mi?')){selectDeskTable(t.id);return;}
+   input.disabled=true;
+   try{const r=await db.rpc('cafe_change_start_v10',{p_session_id:s.id,p_started_at:new Date(value).toISOString()});if(r.error)throw r.error;await reload();msg('Açılış saati değiştirildi.');}
+   catch(err){input.disabled=false;msg('Açılış saati değiştirilemedi: '+err.message,true);}
+  });
+  $('sideControllers').addEventListener('change',async e=>{
+   const select=e.currentTarget,n=Number(select.value),hour=rate(t.id,n);
+   if(hour<=0){msg(n+' kol için saatlik fiyat ayarlanmamış.',true);select.value=String(s.controllers);return;}
+   if(!confirm(n+' kola geçilsin mi? Önceki oyun süresi eski tarifeden, bundan sonraki süre '+money(hour)+'/saat üzerinden hesaplanır.')){select.value=String(s.controllers);return;}
+   select.disabled=true;
+   try{const r=await db.rpc('cafe_change_controllers_v38',{p_session_id:s.id,p_controllers:n});if(r.error)throw r.error;await reload();msg('Kol tarifesi '+n+' kol olarak güncellendi.');}
+   catch(err){select.disabled=false;select.value=String(s.controllers);msg('Kol değiştirilemedi: '+err.message,true);}
+  });
  }
- if(selected){selected.classList.add('desktop-detail');panel.append(selected);}
- document.querySelectorAll('.desk-tile').forEach(el=>{const active=el.dataset.tableId===id;el.classList.toggle('is-selected',active);el.setAttribute('aria-pressed',String(active));});
+ document.querySelectorAll('.desk-tile').forEach(el=>{const on=el.dataset.tableId===id;el.classList.toggle('is-selected',on);el.setAttribute('aria-pressed',String(on));});
  tick();
 }
 const desktopFullCards=new Map();
@@ -245,6 +274,7 @@ function renderDesktop(){
   tile.addEventListener('click',e=>{
    if(bulkSuppressClick){e.preventDefault();return;}
    if(e.ctrlKey||e.metaKey||e.shiftKey){e.preventDefault();if(bulkSelected.has(t.id))bulkSelected.delete(t.id);else bulkSelected.add(t.id);updateBulkSelection();return;}
+   if(window.betaMultiSelectMode){e.preventDefault();if(bulkSelected.has(t.id))bulkSelected.delete(t.id);else bulkSelected.add(t.id);updateBulkSelection();return;}
    if(bulkSelected.size){bulkSelected.clear();updateBulkSelection();}
    selectDeskTable(t.id);
   });
@@ -316,6 +346,15 @@ $('bulkClear').onclick=()=>{bulkSelected.clear();updateBulkSelection()};
   origin=null;document.body.classList.remove('bulk-dragging');};
  window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end);
 })();
+window.betaMultiSelectMode=false;
+$('bulkSelectMode').addEventListener('click',()=>{
+ window.betaMultiSelectMode=!window.betaMultiSelectMode;
+ const b=$('bulkSelectMode');b.setAttribute('aria-pressed',String(window.betaMultiSelectMode));
+ b.textContent=window.betaMultiSelectMode?'✓ Çoklu Seçim: Açık':'▧ Çoklu Seçim: Kapalı';
+ b.classList.toggle('active',window.betaMultiSelectMode);
+ if(!window.betaMultiSelectMode){bulkSelected.clear();updateBulkSelection();}
+ msg(window.betaMultiSelectMode?'Masaların üzerine tıklayarak veya fareyle dikdörtgen çizerek çoklu seçim yapabilirsin.':'Çoklu seçim kapatıldı.');
+});
 const bulkSelectedTables=()=>state.tables.filter(t=>bulkSelected.has(t.id));
 const bulkRowSession=id=>state.sessions.find(s=>s.table_id===id&&!s.ended_at);
 function renderBulkOpen(){

@@ -642,3 +642,21 @@ body.bulk-dragging,body.bulk-dragging *{user-select:none!important}
 .table-context-menu button:not(:disabled):hover{background:#913039;}
 .table-context-menu button:disabled{opacity:.42;cursor:not-allowed;}
 @media(max-width:900px){#layoutEditToggle{display:none!important}}
+
+/* V40: Sol panel: masa bilgisi doğrudan düzenlenir; diğer işlemler sağ tıktadır. */
+#selectedTablePanel .side-summary{display:flex;flex-direction:column;gap:11px;padding:10px 2px;min-width:0}
+#selectedTablePanel .side-label{font-size:13px;color:#f8ebee;font-weight:750;display:block;margin:0}
+#selectedTablePanel .side-label input,#selectedTablePanel .side-label select{width:100%;font-size:15px;min-height:43px;margin-top:6px;background:#2c2228}
+#selectedTablePanel .side-line{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;min-height:30px;border-bottom:1px solid #49373e}
+#selectedTablePanel .side-line strong{font-size:16px;white-space:nowrap;color:#e8fff0;font-variant-numeric:tabular-nums}
+#selectedTablePanel .side-remain{color:#ff6068!important}
+#selectedTablePanel .side-total{border-top:1px solid #cf3645;border-bottom:0;padding:12px 0;font-weight:800}
+#selectedTablePanel .side-total strong{font-size:20px;color:#a7ffc2}
+#selectedTablePanel .side-primary,#selectedTablePanel .side-manual{min-height:47px;width:100%;font-size:15px}
+#selectedTablePanel .side-manual{background:#292027;border:1px solid #694450}
+#selectedTablePanel .side-empty{padding:18px 4px;color:#d8cbd0;font-size:14px}
+#bulkSelectMode.active{background:#74551c;border-color:#ffc866;color:#fff}
+#cards .desk-tile.bulk-selected{outline:3px solid #ffd15d!important;outline-offset:1px}
+#cards .desk-tile{user-select:none;-webkit-user-select:none}
+body.bulk-dragging{user-select:none!important;-webkit-user-select:none!important}
+#cards .bulk-marquee{pointer-events:none}
