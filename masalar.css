@@ -344,3 +344,35 @@
   dialog {width:96vw; max-width:96vw; padding:16px;}
   #tableDialog .tarife-grid {grid-template-columns:1fr;}
 }
+
+/* V30 – tam ekran kafe masa planı: küçük ikonlar + sol işlemler paneli */
+#app .table-workspace{display:grid;grid-template-columns:minmax(285px,340px) minmax(0,1fr);gap:16px;align-items:start;margin:14px 0 22px;}
+#selectedTablePanel{position:sticky;top:12px;min-width:0;padding:14px;border-radius:13px;background:#1a171c;border:1px solid #49383d;}
+#selectedTablePanel .selected-heading{font-size:13px;color:#ff7478;font-weight:900;letter-spacing:.7px;margin:1px 0 9px;}
+#selectedTablePanel .card.desktop-detail{width:100%;min-width:0;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important;padding:12px!important;display:block;}
+#selectedTablePanel .card.desktop-detail .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+#selectedTablePanel .card.desktop-detail .actions button{min-width:0!important;width:100%;font-size:12px;padding:9px 5px;}
+#selectedTablePanel .card.desktop-detail .minirow{font-size:13px;margin:7px 0;}
+#selectedTablePanel .card.desktop-detail .time{font-size:20px!important;}
+#selectedTablePanel .card.desktop-detail .order-detail{max-height:240px;overflow:auto;}
+#tableIconsArea{min-width:0;border:1px solid #312a30;border-radius:13px;padding:13px;background:#101013;}
+#tableIconsArea .icon-list-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+#tableIconsArea .icon-list-heading h2{margin:0;font-size:17px;}
+#cards.cards{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(112px,1fr))!important;gap:12px!important;margin:0!important;}
+#cards .desk-tile{width:100%;height:137px!important;min-height:137px!important;max-height:137px!important;display:flex;flex-direction:column;align-items:center;justify-content:space-between;position:relative;padding:8px 5px 6px;border-radius:10px;background:linear-gradient(#202026, #17171b);border:2px solid var(--closed-color,#69313a);text-align:center;transition:background .1s,border-color .1s;}
+#cards .desk-tile.desk-busy{background:#0f3a26;border-color:#2ecf71;}
+#cards .desk-tile.is-selected{outline:3px solid #e2f4ff;outline-offset:2px;}
+#cards .desk-tile-status{font-size:10px;color:#aaa;font-weight:850;align-self:end;}
+#cards .desk-busy .desk-tile-status{color:#78ffac;}
+#cards .desk-tile-clock{font-size:14px;font-weight:900;color:#fff;white-space:nowrap;font-variant-numeric:tabular-nums;}
+#cards .desk-tile-clock.expired{color:#ff6266;}
+#cards .desk-tile-art{display:block;height:56px;width:78px;max-width:94%;}
+#cards .desk-tile-art svg{display:block;width:100%;height:100%;}
+#cards .desk-tile-name{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:12px;font-weight:900;}
+.desktop-nav{background:#232126;border:1px solid #51474a;color:#fff;}
+.desktop-nav.active{background:#bc1925;border-color:#fb4a52;}
+.orders-desk{margin-bottom:22px;}
+.desktop-orders-link{border:1px solid #5d444a;background:#272025;border-radius:8px;padding:10px;}
+.desk-order-row{display:flex;justify-content:space-between;gap:15px;align-items:center;border-bottom:1px solid #3a3137;padding:12px 3px;}
+.desk-order-row>div:last-child{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+@media(max-width:800px){#app .table-workspace{grid-template-columns:1fr;}#selectedTablePanel{position:static;order:2;}#tableIconsArea{order:1;}#cards.cards{grid-template-columns:repeat(auto-fill,minmax(95px,1fr))!important;}#cards .desk-tile{height:122px!important;min-height:122px!important;max-height:122px!important;}}

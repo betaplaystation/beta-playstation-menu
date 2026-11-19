@@ -2,6 +2,7 @@
 const $=id=>document.getElementById(id);
 const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
+let selectedTableId=null, currentDeskTab="tables";
 const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],advances:[],hiddenReports:[],user:null,refreshBusy:false};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
@@ -129,13 +130,92 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
   return `<div class="historyrow recent-event recent-close"><div class="recent-info"><strong>🔴 ${name} — HESAP KAPANDI</strong><div>Kapanış: ${when} · Süre: ${Math.ceil(secs/60)} dakika</div><div><b>TOPLAM: ${money(total)}</b></div></div><div class="history-actions"><button class="secondary" type="button" data-receipt-history="${esc(s.id)}">🧾 Rapor / Adisyon</button>${state.payments.some(p=>p.session_id===s.id)?`<span class="payment-ok">✓ Ödendi</span>`:`<button class="payment-history-btn" type="button" data-pay-history="${esc(s.id)}">💳 Ödeme Al</button>`}</div></div>`;
  }).join(''):'<p class="muted">Henüz hesap açılışı veya kapanışı yok.</p>';
  updateOutstanding();
- document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));document.querySelectorAll('[data-pay-history]').forEach(b=>b.onclick=()=>openPayment(b.dataset.payHistory));tick();}
+ document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));document.querySelectorAll('[data-pay-history]').forEach(b=>b.onclick=()=>openPayment(b.dataset.payHistory));renderDesktop();tick();}
+
+// V30: kompakt masa planı, seçilen masanın bütün işlemleri sol detay panelinde.
+const tableDeviceArt={
+ playstation:'<svg viewBox="0 0 72 52" aria-hidden="true"><path d="M22 16h28c7 0 12 5 14 13l4 12c2 10-8 14-14 8l-9-8H27l-9 8C12 55 2 51 4 41l4-12c2-8 7-13 14-13Z" fill="#eee" stroke="#a7a7b6" stroke-width="2"/><path d="M19 27v12m-6-6h12" stroke="#303344" stroke-width="4" stroke-linecap="round"/><circle cx="48" cy="29" r="3.5" fill="#ff4655"/><circle cx="56" cy="35" r="3.5" fill="#4baaf1"/><circle cx="37" cy="33" r="4" fill="#b7b9c6"/></svg>',
+ computer:'<svg viewBox="0 0 72 52" aria-hidden="true"><rect x="7" y="6" width="58" height="35" rx="4" fill="#dce8f5" stroke="#7696b5" stroke-width="2"/><rect x="12" y="11" width="48" height="25" rx="1" fill="#1e5d87"/><path d="M36 41v6M22 48h28" stroke="#c8d1dc" stroke-width="4" stroke-linecap="round"/></svg>',
+ billiards:'<svg viewBox="0 0 72 52" aria-hidden="true"><rect x="5" y="6" width="62" height="40" rx="5" fill="#653c1c"/><rect x="10" y="11" width="52" height="30" rx="3" fill="#138a5c"/><g fill="#131619"><circle cx="11" cy="12" r="4"/><circle cx="61" cy="12" r="4"/><circle cx="11" cy="40" r="4"/><circle cx="61" cy="40" r="4"/></g><circle cx="26" cy="24" r="4" fill="#fafafa"/><circle cx="43" cy="31" r="4" fill="#f4d75a"/><circle cx="48" cy="20" r="4" fill="#fff"/></svg>'
+};
+function selectDeskTable(id){
+ const ts=state.tables.filter(t=>t.active);
+ const t=ts.find(t=>t.id===id);
+ if(!t)return;
+ selectedTableId=id;
+ const selected=desktopFullCards.get(id);
+ const panel=$('selectedTablePanel');
+ panel.replaceChildren();
+ const label=document.createElement('div');label.className='selected-heading';label.textContent='MASA BİLGİLERİ · '+t.name;
+ panel.append(label);
+ if(selected){selected.classList.add('desktop-detail');panel.append(selected);}
+ document.querySelectorAll('.desk-tile').forEach(el=>{const active=el.dataset.tableId===id;el.classList.toggle('is-selected',active);el.setAttribute('aria-pressed',String(active));});
+ tick();
+}
+const desktopFullCards=new Map();
+function updateDesktopTimers(){
+ for(const t of state.tables.filter(t=>t.active)){
+  const s=active(t),timer=document.querySelector(`[data-tile-time="${t.id}"]`);
+  if(!timer)continue;
+  if(!s){timer.textContent='BOŞ';continue;}
+  const seconds=elapsed(s);
+  if(s.mode==='timed'){
+   const left=Number(s.planned_seconds||0)-seconds;
+   timer.textContent=left>0?fmtTime(left):'SÜRE DOLDU';
+   timer.classList.toggle('expired',left<=0);
+  }else{timer.textContent=fmtTime(seconds);timer.classList.remove('expired');}
+ }
+}
+function renderOrdersDesk(){
+ const list=$('ordersDeskList');
+ const orders=state.orders.slice().sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)).slice(0,75);
+ list.innerHTML=orders.length?orders.map(o=>{
+  const link=state.links.find(l=>l.order_id===o.id);
+  const sess=state.sessions.find(s=>s.id===link?.session_id);
+  const t=state.tables.find(t=>t.id===sess?.table_id);
+  return `<article class="desk-order-row"><div><strong>${esc(t?.name||o.loca_code||'Masa')}</strong><div class="muted">${new Date(o.created_at).toLocaleString('tr-TR')} · ${esc(o.status||'')}</div><div>${(o.order_items||[]).map(i=>`${Number(i.qty)||0} × ${esc(i.product_name)}`).join(' · ')}</div></div><div><strong>${money(o.total)}</strong>${t?`<button type="button" class="secondary" data-desk-select="${t.id}">Masayı Aç</button>`:''}</div></article>`;
+ }).join(''):'<p class="muted">Açık masa hesaplarına bağlı QR siparişi bulunamadı. Tüm siparişler Yönetici Paneli → Siparişler bölümündedir.</p>';
+ list.querySelectorAll('[data-desk-select]').forEach(b=>b.addEventListener('click',()=>{setDeskTab('tables');selectDeskTable(b.dataset.deskSelect)}));
+}
+function setDeskTab(tab){
+ currentDeskTab=tab;
+ $('tableWorkspace').hidden=tab!=='tables';
+ $('ordersDeskView').hidden=tab!=='orders';
+ $('tabTables').classList.toggle('active',tab==='tables');
+ $('tabOrders').classList.toggle('active',tab==='orders');
+ if(tab==='orders')renderOrdersDesk();
+}
+$('tabTables').addEventListener('click',()=>setDeskTab('tables'));
+$('tabOrders').addEventListener('click',()=>setDeskTab('orders'));
+function renderDesktop(){
+ const grid=$('cards'),cards=[...grid.querySelectorAll(':scope > article.card')];
+ desktopFullCards.clear();
+ const ts=state.tables.filter(t=>t.active);
+ const fragment=document.createDocumentFragment();
+ for(let i=0;i<ts.length;i++){
+  const t=ts[i],s=active(t),full=cards[i];
+  if(full)desktopFullCards.set(t.id,full);
+  const tile=document.createElement('button');tile.type='button';tile.className='desk-tile '+(s?'desk-busy':'desk-free');
+  tile.dataset.tableId=t.id;tile.style.setProperty('--closed-color',validTableColor(t.closed_color));
+  tile.setAttribute('aria-label',t.name+' · '+(s?'Dolu':'Boş')+' · bilgileri aç');
+  const kind=['playstation','computer','billiards'].includes(t.device_type)?t.device_type:'playstation';
+  tile.innerHTML=`<span class="desk-tile-status">${s?'● DOLU':'● BOŞ'}</span><span class="desk-tile-clock" data-tile-time="${esc(t.id)}">${s?'—':'BOŞ'}</span><span class="desk-tile-art">${tableDeviceArt[kind]}</span><span class="desk-tile-name">${esc(t.name)}</span>`;
+  tile.addEventListener('click',()=>selectDeskTable(t.id));fragment.append(tile);
+ }
+ grid.replaceChildren(fragment);
+ if(!ts.length){$('selectedTablePanel').textContent='Henüz masa bulunamadı.';return;}
+ if(!ts.some(t=>t.id===selectedTableId))selectedTableId=ts[0].id;
+ selectDeskTable(selectedTableId);
+ renderOrdersDesk();
+ setDeskTab(currentDeskTab);
+}
+
 function updateOutstanding(){const live=state.sessions.filter(s=>!s.ended_at);const due=live.reduce((sum,s)=>sum+Math.max(0,gameAmount(s)+productAmount(s.id)-advanceAmount(s.id)),0);$('outstandingAmount').textContent=money(due);$('outstandingCount').textContent=live.length+' açık hesap · anlık tahmin (5 TL dilimi)';}
-function tick(){if($('app').hidden)return;updateOutstanding();for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}}
+function tick(){if($('app').hidden)return;updateOutstanding();for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}updateDesktopTimers();}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
-$('newTable').onclick=()=>{$('tableForm').reset();$('tableSort').value=state.tables.length?Math.max(...state.tables.map(t=>Number(t.sort_order)||0))+1:1;$('tableId').value='';$('tableColor').value='#84232b';for(let i=1;i<=4;i++){$('short'+i).value=0;$('round'+i).value=5;}$('tableTitle').textContent='Yeni Masa Ekle';$('tableDialog').showModal()};
-function editTable(id){const t=state.tables.find(x=>x.id===id);if(!t)return;$('tableId').value=id;$('tableName').value=t.name;$('tableSort').value=Number(t.sort_order)||0;$('tableColor').value=validTableColor(t.closed_color);for(let i=1;i<=4;i++){const tr=tariff(id,i);$('rate'+i).value=rate(id,i);$('short'+i).value=Number(tr.short_fee||0);$('round'+i).value=Number(tr.rounding_step||5);}$('tableTitle').textContent='Masa ve Fiyatları';$('tableDialog').showModal();}
+$('newTable').onclick=()=>{$('tableForm').reset();$('tableSort').value=state.tables.length?Math.max(...state.tables.map(t=>Number(t.sort_order)||0))+1:1;$('tableId').value='';$('tableColor').value='#84232b';$('tableDevice').value='playstation';for(let i=1;i<=4;i++){$('short'+i).value=0;$('round'+i).value=5;}$('tableTitle').textContent='Yeni Masa Ekle';$('tableDialog').showModal()};
+function editTable(id){const t=state.tables.find(x=>x.id===id);if(!t)return;$('tableId').value=id;$('tableName').value=t.name;$('tableSort').value=Number(t.sort_order)||0;$('tableColor').value=validTableColor(t.closed_color);$('tableDevice').value=t.device_type||'playstation';for(let i=1;i<=4;i++){const tr=tariff(id,i);$('rate'+i).value=rate(id,i);$('short'+i).value=Number(tr.short_fee||0);$('round'+i).value=Number(tr.rounding_step||5);}$('tableTitle').textContent='Masa ve Fiyatları';$('tableDialog').showModal();}
 $('tableForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const name=$('tableName').value.trim(),prices=[1,2,3,4].map(i=>Number($('rate'+i).value));if(!name||prices.some(v=>!Number.isFinite(v)||v<0))throw Error('İsim ve fiyatlar geçerli olmalı');const r=await db.rpc('cafe_save_table',{p_id:$('tableId').value||null,p_name:name,p_prices:prices});if(r.error)throw r.error;
  const sort=Number($('tableSort').value);
  if(!Number.isInteger(sort)||sort<0||sort>999999)throw Error('Masa sırası 0–999999 arasında tam sayı olmalı.');
@@ -143,6 +223,8 @@ $('tableForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.
  if(orderSave.error)throw orderSave.error;
  const colorSave=await db.rpc('cafe_set_table_color',{p_table_id:r.data,p_closed_color:$('tableColor').value});
  if(colorSave.error)throw colorSave.error;
+ const typeSave=await db.rpc('cafe_set_table_device_v30',{p_table_id:r.data,p_device_type:$('tableDevice').value});
+ if(typeSave.error)throw typeSave.error;
  const rules=[1,2,3,4].map(i=>({controllers:i,short_fee:Number($('short'+i).value),rounding_step:Number($('round'+i).value)}));
  if(rules.some(x=>!Number.isFinite(x.short_fee)||x.short_fee<0||!Number.isFinite(x.rounding_step)||x.rounding_step<=0))throw Error('Aç/Kapa ve yuvarlama değerlerini kontrol edin.');
  const tariffSave=await db.rpc('cafe_save_tariff_rules_v25',{p_table_id:r.data,p_rules:rules});
@@ -483,7 +565,7 @@ $('receiptDialog').addEventListener('keydown',async e=>{
 // V7 Rapor ekranı: geçmiş hesaplar ana masa yükleme sınırından bağımsız alınır.
 const reportDate=d=>{const a=new Date(d);return `${a.getFullYear()}-${String(a.getMonth()+1).padStart(2,'0')}-${String(a.getDate()).padStart(2,'0')}`};
 function initReportDates(){const now=new Date();$('reportTo').value=reportDate(now);const earlier=new Date(now);earlier.setDate(earlier.getDate()-29);$('reportFrom').value=reportDate(earlier)}
-function switchReports(show){$('reportsView').hidden=!show;$('cards').hidden=show;document.querySelector('.stats').hidden=show;$('recentHistory').hidden=show;if(show){$('reportTable').innerHTML='<option value="">Tüm masalar</option>'+state.tables.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');$('reportsView').scrollIntoView({behavior:'smooth',block:'start'});}else window.scrollTo({top:0,behavior:'smooth'});}
+function switchReports(show){$('reportsView').hidden=!show;$('tableWorkspace').hidden=show;$('ordersDeskView').hidden=true;document.querySelector('.stats').hidden=show;$('recentHistory').hidden=show;if(show){$('reportTable').innerHTML='<option value="">Tüm masalar</option>'+state.tables.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');$('reportsView').scrollIntoView({behavior:'smooth',block:'start'});}else {setDeskTab('tables');window.scrollTo({top:0,behavior:'smooth'});}}
 $('showReports').onclick=()=>{switchReports(true);if(!$('reportRows').children.length)loadReport()};
 $('backToTables').onclick=()=>switchReports(false);
 $('reportFilters').addEventListener('submit',e=>{e.preventDefault();loadReport()});
