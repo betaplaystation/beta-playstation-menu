@@ -111,3 +111,19 @@
 #history .recent-close{color:#ff787c;border-left:3px solid #e63c44;padding-left:13px;}
 #history .recent-close button{color:#fff;flex:none;white-space:nowrap;}
 @media(max-width:600px){#history .recent-event{align-items:flex-start;flex-wrap:wrap;}#history .recent-close button{width:100%;}}
+
+/* V12 - Son işlemlerde simge değil, bütün bilgi metni durum rengiyle gösterilir. */
+#recentHistory #history .recent-open,
+#recentHistory #history .recent-open .recent-info,
+#recentHistory #history .recent-open .recent-info * {
+  color: #39e887 !important;
+}
+#recentHistory #history .recent-close,
+#recentHistory #history .recent-close .recent-info,
+#recentHistory #history .recent-close .recent-info * {
+  color: #ff464d !important;
+}
+#recentHistory #history .recent-close button,
+#recentHistory #history .recent-close button * {
+  color: #ffffff !important;
+}
