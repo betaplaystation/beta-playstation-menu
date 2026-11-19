@@ -45,3 +45,14 @@
 .report-panel{margin:18px 0 30px}.report-filters{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:12px 0}.report-filters label{min-width:145px;flex:1;margin:0}.report-filters button{min-height:44px}.report-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:18px 0}.report-summary>div{padding:15px;border:1px solid #513137;background:#21191d;border-radius:12px;min-width:0}.report-summary span{display:block;color:#b8adb2;font-size:12px}.report-summary strong{display:block;font-size:20px;color:#ff7277;margin-top:5px;overflow-wrap:anywhere}.report-scroller{overflow-x:auto}.report-table{width:100%;border-collapse:collapse;min-width:710px;font-size:13px}.report-table th,.report-table td{border-bottom:1px solid #4c373c;padding:13px 10px;text-align:left;vertical-align:top}.report-table thead th{color:#ffd3d5;background:#2b1c20}.report-table tbody tr:hover{background:#211a1d}.report-table tfoot{font-weight:800;background:#381c23;color:#fff}.report-table small{color:#b8abb0}.report-detail{margin-top:9px;color:#f1d4d6;max-width:340px}.report-detail summary{cursor:pointer;color:#ffb4b9;font-weight:700}.report-group{padding:9px 0;line-height:1.7}.report-group b{color:white}.report-group div{color:#c7bcc1;overflow-wrap:anywhere}.report-filters input,.report-filters select{min-height:43px}
 @media(max-width:700px){.report-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.report-summary strong{font-size:17px}}
 @media print{#reportsView{display:none!important}}
+
+/* V8 — Oturum açık (hesap devam ediyor) kartları yeşil. Boş masalar yöneticiye özel renk. */
+.card.card-open{background:#123e28;border:2px solid #30bc70;box-shadow:inset 0 0 0 1px rgba(17,98,56,.4)}
+.card.card-open .tag.busy{background:#1d8148;color:#fff}
+.card.card-open .amount,.card.card-open .due strong{color:#9effb9}
+.card.card-open .line{border-color:#34865a}
+.card.card-open .order-detail{background:#173b2b;border-color:#3b875c}
+.card.card-open .order-detail summary{color:#b6ffd0}
+.card.card-closed{background:linear-gradient(rgba(0,0,0,.42),rgba(0,0,0,.42)),var(--closed-color,#84232b);border:2px solid var(--closed-color,#84232b)}
+.card.card-closed .tag{background:rgba(10,10,12,.75);color:#fff}
+#tableColor{height:50px;padding:5px 8px;cursor:pointer}
