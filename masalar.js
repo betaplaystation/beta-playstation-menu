@@ -292,8 +292,8 @@ async function showReceipt(id){
 }
 $('receiptCancel').onclick=()=>$('receiptDialog').close();
 $('receiptPrint').onclick=()=>window.print();
-$('receiptConfirm').onclick=async()=>{
- if(!receiptSessionId||receiptClosed)return;
+async function closeReceiptAccount(){
+ if(!receiptSessionId||receiptClosed)return false;
  const button=$('receiptConfirm');button.disabled=true;
  try{
   const id=receiptSessionId;
@@ -311,9 +311,11 @@ $('receiptConfirm').onclick=async()=>{
   button.hidden=true;$('receiptCancel').textContent='Kapat';
   msg(`${receiptSnapshot.name} hesabı kapatıldı. Toplam ${money(receiptSnapshot.total)}.`);
   fillPayment(id);
- }catch(e){msg(e.message,true);$('receiptWarning').textContent='İşlem doğrulanamadı: '+e.message;}
+  return true;
+ }catch(e){msg(e.message,true);$('receiptWarning').textContent='İşlem doğrulanamadı: '+e.message;return false;}
  finally{button.disabled=false}
-};
+}
+$('receiptConfirm').onclick=closeReceiptAccount;
 
 // V16 - hesap kapandiktan sonra nakit, kart ve iskonto. Server yeniden hesaplar.
 let paymentSessionId=null;
@@ -364,20 +366,61 @@ async function openPayment(id){
  $('embeddedPayment').hidden=false;
 }
 for(const id of ['payDiscountType','payDiscount','payCash','payCard'])$(id).addEventListener('input',updatePaymentPreview);
-$('paymentForm').addEventListener('submit',async e=>{
- e.preventDefault();const button=$('paymentSave');if(button.disabled||!paymentSessionId)return;
- button.disabled=true;
+let paymentSaving=false;
+async function savePaymentRecord(){
+ const button=$('paymentSave');
+ if(button.disabled||!paymentSessionId||paymentSaving)return false;
+ paymentSaving=true;button.disabled=true;
  try{
   const discount=discountValue(paymentTotal()),cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
   if(![cash,card].every(n=>Number.isFinite(n)&&n>=0))throw Error('Nakit ve kart negatif olamaz.');
   if(cents(cash)+cents(card)!==cents(paymentTotal())-cents(discount))throw Error('Nakit + Kart toplamı ödenecek tutara eşit olmalı.');
-  const r=await db.rpc('cafe_record_payment_v16',{p_session_id:paymentSessionId,p_discount_amount:discount,p_cash_amount:cash,p_card_amount:card});
+  const id=paymentSessionId;
+  const r=await db.rpc('cafe_record_payment_v16',{p_session_id:id,p_discount_amount:discount,p_cash_amount:cash,p_card_amount:card});
   if(r.error)throw r.error;
-  await reload(true);fillPayment(paymentSessionId);
+  await reload(true);
+  fillPayment(id);
   $('receiptWarning').textContent='✓ Hesap kapatıldı ve ödeme kaydedildi.';
   msg('Ödeme kaydedildi: Nakit '+money(cash)+' · Kart '+money(card)+' · İskonto '+money(discount));
- }catch(err){$('paymentWarning').textContent='Ödeme kaydedilemedi: '+err.message;msg(err.message,true);updatePaymentPreview();}
- finally{button.disabled=false}
+  return true;
+ }catch(err){
+  $('paymentWarning').textContent='Ödeme kaydedilemedi: '+err.message;
+  msg(err.message,true);updatePaymentPreview();return false;
+ }finally{paymentSaving=false;button.disabled=false;}
+}
+$('paymentForm').addEventListener('submit',async e=>{e.preventDefault();await savePaymentRecord()});
+
+// V19: Adisyon kapatma penceresinde Enter = hesabı kapat ve tam tutarı KART olarak kaydet.
+// Yalnızca diyalog açıkken, ödeme alanlarında yazı yazılmıyorsa çalışır.
+// Hem hesap kapatma hem ödeme kaydı başarılı olmadan pencere kapanmaz.
+let enterCloseBusy=false;
+$('receiptDialog').addEventListener('keydown',async e=>{
+ if(e.key!=='Enter'||e.repeat||e.ctrlKey||e.altKey||e.metaKey||e.shiftKey||enterCloseBusy)return;
+ const el=e.target;
+ if(el.closest('input,select,textarea')||el.isContentEditable)return;
+ // Geçmişte ödenmiş bir hesapta Enter'ın herhangi bir kayıt oluşturmasına izin verme.
+ if(receiptClosed&&state.payments.some(p=>p.session_id===receiptSessionId))return;
+ e.preventDefault();e.stopPropagation();
+ enterCloseBusy=true;
+ const warning=$('receiptWarning');
+ try{
+  warning.textContent='⏳ Enter işlemi: hesap kapatılıyor ve tutarın tamamı kart olarak kaydediliyor…';
+  if(!receiptClosed){
+   const closed=await closeReceiptAccount();
+   if(!closed)return;
+  }
+  if(!paymentSessionId||paymentSessionId!==receiptSessionId)fillPayment(receiptSessionId);
+  if(state.payments.some(p=>p.session_id===receiptSessionId)){
+   $('receiptDialog').close();return;
+  }
+  // Kullanıcının açıkça istediği hızlı işlem: iskonto 0, nakit 0, kart = kesin kapanış tutarı.
+  $('payDiscountType').value='amount';$('payDiscount').value='0';
+  $('payCash').value='0';$('payCard').value=paymentTotal().toFixed(2);
+  updatePaymentPreview();
+  const ok=await savePaymentRecord();
+  if(ok){$('receiptDialog').close();msg('✓ Hesap kapatıldı. Tamamı kart olarak kaydedildi.');}
+ }catch(err){warning.textContent='İşlem tamamlanamadı: '+err.message;msg(err.message,true)}
+ finally{enterCloseBusy=false;}
 });
 
 // V7 Rapor ekranı: geçmiş hesaplar ana masa yükleme sınırından bağımsız alınır.
