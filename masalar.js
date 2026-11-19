@@ -525,8 +525,11 @@ function renderManualQueue(){
  $('manualQueued').querySelectorAll('[data-queue-remove]').forEach(b=>b.onclick=()=>{manualQueue.delete(b.dataset.queueRemove);renderManualQueue()});
 }
 function openManualDialog(id){
- const s=state.sessions.find(x=>x.id===id&&!x.ended_at);if(!s)return;
- manualSessionId=id;manualPickId=null;manualQueue=new Map();$('manualForm').reset();$('manualPick').hidden=true;
+ // Masa kartı/sağ tık masa ID gönderir, eski kısa yol oturum ID gönderir.
+ // Her iki yolu aktif oturuma eşleştir; adisyon kayıtları her zaman session_id ile tutulur.
+ const s=state.sessions.find(x=>!x.ended_at && (x.id===id || x.table_id===id));
+ if(!s){msg('Adisyon eklemek için önce bu masada hesap açmalısın.',true);return;}
+ manualSessionId=s.id;manualPickId=null;manualQueue=new Map();$('manualForm').reset();$('manualPick').hidden=true;
  $('manualSession').textContent=state.tables.find(t=>t.id===s.table_id)?.name||'Masa';
  const products=state.charges.filter(p=>p.active);
  $('manualCatalog').innerHTML=products.length?products.map(p=>`<button type="button" class="manual-catalog-item" data-catalog-pick="${esc(p.id)}"><strong>${esc(p.name)}</strong><small>${esc(p.category)}</small><b>${money(p.price)}</b></button>`).join(''):'<p class="muted">Aktif kasa adisyon kalemi yok. Önce Adisyon Kalemleri bölümünden ekle.</p>';
@@ -535,6 +538,7 @@ function openManualDialog(id){
   $('manualPickedName').textContent=p.name+' · '+money(p.price);$('manualQty').value='1';$('manualPick').hidden=false;$('manualQty').focus();
   $('manualCatalog').querySelectorAll('.manual-catalog-item').forEach(c=>c.classList.toggle('picked',c===b));
  });
+ if($('manualDialog').open){$('manualDialog').close();}
  renderManualQueue();$('manualDialog').showModal();
 }
 $('manualQueueAdd').addEventListener('click',()=>{
