@@ -350,11 +350,32 @@ async function runBulkOpen(){
  await reload(true);
  return {successes,failures};
 }
+function askBulkCloseConfirmation(tables,estimate,method){
+ const dlg=$('bulkConfirmDialog');
+ $('bulkConfirmText').textContent=`${tables.length} masanın hesabı kapatılacak. Ödeme yöntemi: ${method==='card'?'KART':'NAKİT'}.`;
+ const rows=tables.map(t=>{
+  const s=active(t);if(!s)return '';
+  const r=receiptData(s),paid=advanceAmount(s.id);
+  return `<div class="bulk-confirm-item"><span>${esc(t.name)}</span><span>${money(Math.max(0,r.total-paid))}</span></div>`;
+ }).join('');
+ $('bulkConfirmList').innerHTML=rows+`<div class="bulk-confirm-sum"><strong>TAHSİL EDİLECEK (TAHMİNİ)</strong><strong>${money(estimate)}</strong></div>`;
+ return new Promise(resolve=>{
+  let answer=false;
+  const yes=$('bulkConfirmYes'),no=$('bulkConfirmCancel');
+  const accept=()=>{answer=true;dlg.close()};
+  const reject=()=>{answer=false;dlg.close()};
+  const finish=()=>{yes.removeEventListener('click',accept);no.removeEventListener('click',reject);dlg.removeEventListener('close',finish);resolve(answer)};
+  yes.addEventListener('click',accept);no.addEventListener('click',reject);dlg.addEventListener('close',finish);
+  dlg.showModal();
+ });
+}
 async function runBulkClose(){
  const tables=bulkSelectedTables().filter(t=>active(t));
  const method=$('bulkPaymentMethod').value;
  const estimate=tables.reduce((sum,t)=>{const s=active(t);return sum+Math.max(0,receiptData(s).total-advanceAmount(s.id))},0);
- if(!confirm(`${tables.length} masanın hesabı kapatılacak. Anlık tahsilat tahmini: ${money(estimate)}. Kesin tutarlar kapanışta hesaplanır. ${method==='card'?'KART':'NAKİT'} olarak kaydedilsin mi?`))return;
+ // İkinci, büyük onay penceresi: burada onaylanmadan hiçbir hesabı kapatma.
+ const approved=await askBulkCloseConfirmation(tables,estimate,method);
+ if(!approved)return;
  const successes=[],failures=[];
  for(const t of tables){
   const s=active(t);if(!s)continue;
