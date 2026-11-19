@@ -161,3 +161,7 @@
 @media (max-width: 600px) {
   #recentHistory #history {max-height: 300px;}
 }
+
+/* V15: priorite duzeltmesi, tarihce kaydinin kendi icinde kaymasi */
+#app #recentHistory #history {height:360px !important;max-height:360px !important;min-height:0 !important;overflow-y:auto !important;overflow-x:hidden !important;display:block !important;}
+@media(max-width:600px){#app #recentHistory #history{height:300px !important;max-height:300px !important;}}
