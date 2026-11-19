@@ -185,6 +185,7 @@ function selectDeskTable(id){
   <label class="side-label">🕓 Açılış tarihi ve saati
    <input id="sideStartTime" type="datetime-local" value="${local}" aria-label="Açılış tarihi ve saatini doğrudan düzenle">
   </label>
+  <button type="button" id="sideSaveStartTime" class="secondary side-save-time" hidden>✓ Açılış Saatini Kaydet</button>
   ${s.mode==='timed'?`<div class="side-line"><span>🕔 Bitiş saati</span><strong>${esc(endLocal)}</strong></div><div class="side-line"><span>⏳ Kalan süre</span><strong class="side-remain" data-left="${s.id}">—</strong></div>`:''}
   <label class="side-label">🎮 Kol sayısı
    <select id="sideControllers">${[1,2,3,4].map(n=>`<option value="${n}" ${n===Number(s.controllers)?'selected':''}>${n} Kol · ${esc(money(rate(t.id,n)))}/saat</option>`).join('')}</select>
@@ -198,13 +199,28 @@ function selectDeskTable(id){
   panel.append(box);
   $('sideManual').onclick=()=>openManualDialog(t.id);
   $('sideClose').onclick=()=>showReceipt(s.id);
-  $('sideStartTime').addEventListener('change',async e=>{
-   const input=e.currentTarget,value=input.value;
-   if(!value||Number.isNaN(new Date(value).getTime())){msg('Açılış saati geçersiz.',true);return;}
-   if(!confirm('Açılış tarihi ve saati güncellensin mi?')){selectDeskTable(t.id);return;}
-   input.disabled=true;
-   try{const r=await db.rpc('cafe_change_start_v10',{p_session_id:s.id,p_started_at:new Date(value).toISOString()});if(r.error)throw r.error;await reload();msg('Açılış saati değiştirildi.');}
-   catch(err){input.disabled=false;msg('Açılış saati değiştirilemedi: '+err.message,true);}
+  const openingInput=$('sideStartTime');
+  const openingSave=$('sideSaveStartTime');
+  // Tarih alanindan cikmak, sekmeye tiklamak veya secim degistirmek hicbir popup acmaz.
+  // Veri sadece acikca Kaydet butonuna basilirsa guncellenir.
+  openingInput.addEventListener('input',()=>{
+   openingSave.hidden=openingInput.value===local;
+  });
+  openingInput.addEventListener('change',()=>{
+   openingSave.hidden=openingInput.value===local;
+  });
+  openingSave.addEventListener('click',async()=>{
+   const value=openingInput.value;
+   if(!value||Number.isNaN(new Date(value).getTime())){msg('Acilis saati gecersiz.',true);return;}
+   const selectedDate=new Date(value);
+   if(selectedDate.getTime()>Date.now()){msg('Acilis saati gelecekte olamaz.',true);return;}
+   openingInput.disabled=true;openingSave.disabled=true;
+   try{
+    const r=await db.rpc('cafe_change_start_v10',{p_session_id:s.id,p_started_at:selectedDate.toISOString()});
+    if(r.error)throw r.error;
+    await reload();
+    msg('Açılış saati güncellendi.');
+   }catch(err){openingInput.disabled=false;openingSave.disabled=false;msg('Açılış saati değiştirilemedi: '+err.message,true);}
   });
   $('sideControllers').addEventListener('change',async e=>{
    const select=e.currentTarget,n=Number(select.value),hour=rate(t.id,n);
@@ -251,8 +267,10 @@ function setDeskTab(tab){
  $('tableWorkspace').hidden=tab!=='tables';
  $('ordersDeskView').hidden=tab!=='orders';
  $('reportsView').hidden=tab!=='reports';
- document.querySelector('.stats').hidden=tab!=='tables';
- $('recentHistory').hidden=tab!=='tables';
+ // CSS display:grid!important masa duzenini gizli sekmelerde tekrar acmamali.
+ $('tableWorkspace').classList.toggle('desk-view-hidden',tab!=='tables');
+ $('ordersDeskView').classList.toggle('desk-view-hidden',tab!=='orders');
+ $('reportsView').classList.toggle('desk-view-hidden',tab!=='reports');
  $('tabTables').classList.toggle('active',tab==='tables');
  $('tabOrders').classList.toggle('active',tab==='orders');
  $('showReports').classList.toggle('active',tab==='reports');

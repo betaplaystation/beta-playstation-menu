@@ -1,0 +1,9 @@
+/* V46: Masa planinin display:grid!important kuralini gizlenen sekmelerde iptal et. */
+#app #tableWorkspace[hidden],
+#app #ordersDeskView[hidden],
+#app #reportsView[hidden],
+#app .desk-view-hidden {display:none!important;visibility:hidden!important;}
+
+/* Sol panelde tarih duzenlemesi yalnizca "Kaydet" tiklaninca calisir. */
+#app .side-save-time {width:100%;padding:9px 12px;margin:0 0 10px;background:#153825;border:1px solid #24864d;color:#baffd1;}
+#app .side-save-time[hidden]{display:none!important;}
