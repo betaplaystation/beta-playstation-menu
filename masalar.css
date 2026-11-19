@@ -194,3 +194,21 @@
 #receiptDialog:has(#receiptBody[hidden]){max-width:560px}
 #receiptDialog .receipt-body[hidden]{display:none!important}
 #receiptDialog .receipt-actions #receiptConfirm[hidden],#receiptDialog .receipt-actions #receiptPrint[hidden]{display:none!important}
+
+/* V22 — Masa kartları hesabın durumuna göre boy değiştirmez. */
+#cards.cards { align-items:stretch; grid-auto-rows:390px; }
+#cards.cards > .card {
+  height:390px !important;
+  min-height:390px !important;
+  max-height:390px !important;
+  display:flex;
+  flex-direction:column;
+  overflow-y:auto;
+  overflow-x:hidden;
+  scrollbar-width:thin;
+  scrollbar-color:#68545b transparent;
+}
+#cards.cards > .card .actions:last-child { margin-top:auto; }
+@media(max-width:550px) {
+  #cards.cards {grid-auto-rows:390px;}
+}
