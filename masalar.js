@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
-const state={tables:[],rates:[],sessions:[],user:null,refreshBusy:false};
+const state={tables:[],rates:[],sessions:[],links:[],orders:[],user:null,refreshBusy:false};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -16,12 +16,54 @@ async function requireAuthorized(){const {data:{user},error}=await db.auth.getUs
 async function init(){if(!db){msg('Supabase config.js bağlantısı eksik.',true);return;}try{if(await requireAuthorized()){setAuth(true);await reload();}else setAuth(false);}catch(e){msg(e.message,true)}}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!db)return;const b=e.currentTarget.querySelector('button');b.disabled=true;try{const r=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(r.error)throw r.error;if(!await requireAuthorized()){await db.auth.signOut();throw Error('Bu hesap yönetici değil.')}setAuth(true);msg('');await reload();}catch(x){msg(x.message,true)}finally{b.disabled=false}});
 $('logout').addEventListener('click',async()=>{await db.auth.signOut();state.user=null;setAuth(false);msg('Çıkış yapıldı.');});
-async function reload(silent=false){if(!db||!state.user||state.refreshBusy)return;state.refreshBusy=true;try{const r=await Promise.all([db.from('cafe_tables').select('*').order('created_at'),db.from('cafe_table_rates').select('*'),db.from('cafe_sessions').select('*').order('started_at',{ascending:false}).limit(250)]);for(const x of r)if(x.error)throw x.error;[state.tables,state.rates,state.sessions]=r.map(x=>x.data||[]);render();if(!silent)msg('Masalar güncellendi.');}catch(e){msg('Masa verisi alınamadı: '+e.message,true)}finally{state.refreshBusy=false}}
+async function reload(silent=false){
+ if(!db||!state.user||state.refreshBusy)return;
+ state.refreshBusy=true;
+ try{
+  const r=await Promise.all([
+   db.from('cafe_tables').select('*').order('created_at'),
+   db.from('cafe_table_rates').select('*'),
+   db.from('cafe_sessions').select('*').order('started_at',{ascending:false}).limit(250)
+  ]);
+  for(const x of r)if(x.error)throw x.error;
+  [state.tables,state.rates,state.sessions]=r.map(x=>x.data||[]);
+  const interesting=state.sessions.filter(s=>!s.ended_at).concat(state.sessions.filter(s=>s.ended_at).slice(0,15));
+  const sessionIds=interesting.map(s=>s.id);
+  state.links=[];state.orders=[];
+  if(sessionIds.length){
+   const links=await db.from('cafe_session_orders').select('session_id,order_id').in('session_id',sessionIds).limit(1000);
+   if(links.error)throw links.error;
+   state.links=links.data||[];
+   const orderIds=[...new Set(state.links.map(l=>l.order_id))];
+   // Supabase sorgusunu makul boyutta tut: her adisyonda en fazla 1000 baglanti.
+   for(let i=0;i<orderIds.length;i+=100){
+    const or=await db.from('orders')
+     .select('id,loca_code,status,total,created_at,order_items(product_name,qty,unit_price)')
+     .in('id',orderIds.slice(i,i+100));
+    if(or.error)throw or.error;
+    state.orders.push(...(or.data||[]));
+   }
+  }
+  render();if(!silent)msg('Masalar ve siparişler güncellendi.');
+ }catch(e){msg('Masa veya sipariş verisi alınamadı: '+e.message,true)}
+ finally{state.refreshBusy=false}
+}
+const ordersForSession=id=>{
+ const ids=new Set(state.links.filter(l=>l.session_id===id).map(l=>l.order_id));
+ return state.orders.filter(o=>ids.has(o.id)).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+};
+const orderAmount=id=>ordersForSession(id).filter(o=>o.status!=='cancelled')
+ .reduce((sum,o)=>sum+Number(o.total||0),0);
+const orderDetails=id=>{
+ const os=ordersForSession(id);
+ if(!os.length)return '<div class="muted">Henüz QR siparişi yok.</div>';
+ return os.map(o=>`<div class="order-item"><div class="minirow"><span>${new Date(o.created_at).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})} · ${o.status==='cancelled'?'İPTAL · ':''}#${esc(o.id.slice(0,8))}</span><strong>${o.status==='cancelled'?'<s>'+money(o.total)+'</s>':money(o.total)}</strong></div>${(o.order_items||[]).map(i=>`<div class="muted">${Number(i.qty)||0} × ${esc(i.product_name)}</div>`).join('')}</div>`).join('');
+};
 function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>active(t));$('totalTables').textContent=ts.length;$('busyTables').textContent=busy.length;$('freeTables').textContent=ts.length-busy.length;
- $('cards').innerHTML=ts.length?ts.map(t=>{const s=active(t);return `<article class="card"><div class="cardtop"><h3>${esc(t.name)}</h3><span class="tag ${s?'busy':''}" id="tag-${t.id}">${s?'● DOLU':'● BOŞ'}</span></div><div class="line"></div>${s?`<div class="muted">${s.controllers} Kol · ${s.mode==='timed'?'Süreli':'Süresiz'} · ${money(s.hourly_price)}/saat</div><div class="minirow"><span>Geçen süre</span><strong class="time" data-timer="${s.id}">00:00:00</strong></div>${s.mode==='timed'?`<div class="minirow"><span>Kalan süre</span><strong data-left="${s.id}">—</strong></div>`:''}<div class="minirow"><span>Oyun ücreti</span><strong class="amount" data-amount="${s.id}"></strong></div><div class="actions"><button data-close-session="${s.id}">Hesabı Kapat</button><button class="secondary" data-edit-table="${t.id}">Ayarlar</button></div>`:`<div class="muted">Hesap açılmayı bekliyor</div><p class="muted">1–4 kol için ayrı saatlik ücret</p><div class="actions"><button data-open-table="${t.id}">Hesap Aç</button><button class="secondary" data-edit-table="${t.id}">Ayarlar</button></div>`}</article>`;}).join(''):'<p class="muted">Henüz aktif masa yok. “Masa Ekle” ile başlayın.</p>';
+ $('cards').innerHTML=ts.length?ts.map(t=>{const s=active(t);return `<article class="card"><div class="cardtop"><h3>${esc(t.name)}</h3><span class="tag ${s?'busy':''}" id="tag-${t.id}">${s?'● DOLU':'● BOŞ'}</span></div><div class="line"></div>${s?`<div class="muted">${s.controllers} Kol · ${s.mode==='timed'?'Süreli':'Süresiz'} · ${money(s.hourly_price)}/saat</div><div class="minirow"><span>Geçen süre</span><strong class="time" data-timer="${s.id}">00:00:00</strong></div>${s.mode==='timed'?`<div class="minirow"><span>Kalan süre</span><strong data-left="${s.id}">—</strong></div>`:''}<div class="minirow"><span>Oyun ücreti</span><strong class="amount" data-amount="${s.id}"></strong></div><div class="minirow"><span>QR siparişleri</span><strong>${money(orderAmount(s.id))}</strong></div><div class="minirow due"><span>TOPLAM ADİSYON</span><strong data-total="${s.id}">${money(gameAmount(s)+orderAmount(s.id))}</strong></div><details class="order-detail"><summary>🧾 Siparişler (${ordersForSession(s.id).length})</summary>${orderDetails(s.id)}</details><div class="actions"><button data-close-session="${s.id}">Hesabı Kapat</button><button class="secondary" data-edit-table="${t.id}">Ayarlar</button></div>`:`<div class="muted">Hesap açılmayı bekliyor</div><p class="muted">1–4 kol için ayrı saatlik ücret</p><div class="actions"><button data-open-table="${t.id}">Hesap Aç</button><button class="secondary" data-edit-table="${t.id}">Ayarlar</button></div>`}</article>`;}).join(''):'<p class="muted">Henüz aktif masa yok. “Masa Ekle” ile başlayın.</p>';
  document.querySelectorAll('[data-open-table]').forEach(b=>b.onclick=()=>openSessionDialog(b.dataset.openTable));document.querySelectorAll('[data-edit-table]').forEach(b=>b.onclick=()=>editTable(b.dataset.editTable));document.querySelectorAll('[data-close-session]').forEach(b=>b.onclick=()=>closeSession(b.dataset.closeSession));
- const closed=state.sessions.filter(s=>s.ended_at).slice(0,15);$('history').innerHTML=closed.length?closed.map(s=>`<div class="historyrow"><span><b>${esc(state.tables.find(t=>t.id===s.table_id)?.name||'Masa')}</b> · ${s.controllers} Kol · ${new Date(s.ended_at).toLocaleString('tr-TR')}</span><strong>${money(s.final_game_amount)}</strong></div>`).join(''):'<p class="muted">Henüz kapatılmış hesap yok.</p>';tick();}
-function tick(){if($('app').hidden)return;for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));}}
+ const closed=state.sessions.filter(s=>s.ended_at).slice(0,15);$('history').innerHTML=closed.length?closed.map(s=>`<div class="historyrow"><span><b>${esc(state.tables.find(t=>t.id===s.table_id)?.name||'Masa')}</b> · ${s.controllers} Kol · ${new Date(s.ended_at).toLocaleString('tr-TR')}</span><strong>${money(s.final_total_amount??s.final_game_amount)} <small class="muted">(oyun ${money(s.final_game_amount)}, ürün ${money(s.final_order_amount??0)})</small></strong></div>`).join(''):'<p class="muted">Henüz kapatılmış hesap yok.</p>';tick();}
+function tick(){if($('app').hidden)return;for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+orderAmount(s.id));}}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('newTable').onclick=()=>{$('tableForm').reset();$('tableId').value='';$('tableTitle').textContent='Yeni Masa Ekle';$('tableDialog').showModal()};
@@ -31,5 +73,17 @@ let currentTable=null;function openSessionDialog(id){const t=state.tables.find(x
 for(const id of ['controllers','mode','entryType','entryValue'])$(id).addEventListener(id==='entryValue'?'input':'change',updatePreview);
 function updatePreview(){if(!currentTable)return;const n=Number($('controllers').value),hourly=rate(currentTable.id,n),mode=$('mode').value,typ=$('entryType').value,val=Number($('entryValue').value);$('timedFields').hidden=mode==='unlimited';$('valueLabel').firstChild.textContent=typ==='minutes'?'Dakika':'Tutar (TL)';$('entryValue').step=typ==='minutes'?'1':'0.01';$('entryValue').placeholder=typ==='minutes'?'Ör. 80':'Ör. 250';if(mode==='unlimited'){$('calculated').textContent=`Saatlik: ${money(hourly)} · Süre otomatik sayılacak.`;return;}if(hourly<=0){$('calculated').textContent='Bu kol için saatlik fiyatı önce masa ayarlarından belirle.';return;}if(!Number.isFinite(val)||val<=0){$('calculated').textContent=`Saatlik ${money(hourly)} · Dakika veya tutar gir.`;return;}const seconds=typ==='minutes'?val*60:Math.round(val*3600/hourly),amount=typ==='minutes'?hourly*val/60:val;$('calculated').textContent=`Seçim: ${n} Kol · Süre: ${fmtTime(seconds)} · Sabit oyun ücreti: ${money(amount)}`;}
 $('sessionForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const timed=$('mode').value==='timed',val=timed?Number($('entryValue').value):null;if(timed&&(!Number.isFinite(val)||val<=0))throw Error('Pozitif bir dakika veya tutar gir.');const r=await db.rpc('cafe_open_session',{p_table_id:$('sessionTable').value,p_controllers:Number($('controllers').value),p_mode:$('mode').value,p_entry_type:timed?$('entryType').value:null,p_entry_value:val});if(r.error)throw r.error;$('sessionDialog').close();await reload();msg('Hesap açıldı, süre başladı.');}catch(x){msg(x.message,true)}finally{b.disabled=false}});
-async function closeSession(id){const s=state.sessions.find(x=>x.id===id&&!x.ended_at);if(!s)return;const label=state.tables.find(t=>t.id===s.table_id)?.name||'Masa';if(!confirm(`${label} hesabını kapatmak istiyor musun?\nTahmini oyun tutarı: ${money(gameAmount(s))}\n\nNot: Ödeme tahsilatı ve QR siparişleri bu ilk sürümde dahil değil.`))return;try{const r=await db.rpc('cafe_close_session',{p_session_id:id});if(r.error)throw r.error;await reload();msg(`${label} hesabı kapatıldı. Oyun tutarı: ${money(r.data)}. (Ödeme kaydı oluşturulmadı)`)}catch(e){msg(e.message,true)}}
+async function closeSession(id){
+ const s=state.sessions.find(x=>x.id===id&&!x.ended_at);if(!s)return;
+ const label=state.tables.find(t=>t.id===s.table_id)?.name||'Masa';
+ const game=gameAmount(s),orders=orderAmount(id);
+ if(!confirm(`${label} hesabını kapatmak istiyor musun?\nOyun ücreti: ${money(game)}\nQR siparişleri: ${money(orders)}\nTOPLAM: ${money(game+orders)}\n\nNot: Bu işlem ödeme tahsilatı kaydetmez.`))return;
+ try{
+  const r=await db.rpc('cafe_close_session',{p_session_id:id});if(r.error)throw r.error;
+  await reload();
+  const closed=state.sessions.find(x=>x.id===id);
+  msg(`${label} kapatıldı. Oyun: ${money(closed?.final_game_amount??r.data)}, ürün: ${money(closed?.final_order_amount??orders)}, TOPLAM: ${money(closed?.final_total_amount??(Number(r.data)+orders))}. Ödeme kaydı oluşturulmadı.`);
+ }catch(e){msg(e.message,true)}
+}
+
 init();
