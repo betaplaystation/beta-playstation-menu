@@ -24,7 +24,7 @@ async function reload(silent=false){
  state.refreshBusy=true;
  try{
   const r=await Promise.all([
-   db.from('cafe_tables').select('*').order('created_at'),
+   db.from('cafe_tables').select('*').order('sort_order',{ascending:true}).order('created_at',{ascending:true}),
    db.from('cafe_table_rates').select('*'),
    db.from('cafe_sessions').select('*').order('started_at',{ascending:false}).limit(250),
    db.from('cafe_charge_catalog').select('id,name,category,price,active,sort_order').order('category').order('name')
@@ -77,9 +77,14 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
 function tick(){if($('app').hidden)return;for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
-$('newTable').onclick=()=>{$('tableForm').reset();$('tableId').value='';$('tableTitle').textContent='Yeni Masa Ekle';$('tableDialog').showModal()};
-function editTable(id){const t=state.tables.find(x=>x.id===id);if(!t)return;$('tableId').value=id;$('tableName').value=t.name;for(let i=1;i<=4;i++)$('rate'+i).value=rate(id,i);$('tableTitle').textContent='Masa ve Fiyatları';$('tableDialog').showModal();}
-$('tableForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const name=$('tableName').value.trim(),prices=[1,2,3,4].map(i=>Number($('rate'+i).value));if(!name||prices.some(v=>!Number.isFinite(v)||v<0))throw Error('İsim ve fiyatlar geçerli olmalı');const r=await db.rpc('cafe_save_table',{p_id:$('tableId').value||null,p_name:name,p_prices:prices});if(r.error)throw r.error;$('tableDialog').close();await reload();msg('Masa kaydedildi.');}catch(x){msg(x.message,true)}finally{b.disabled=false}});
+$('newTable').onclick=()=>{$('tableForm').reset();$('tableSort').value=state.tables.length?Math.max(...state.tables.map(t=>Number(t.sort_order)||0))+1:1;$('tableId').value='';$('tableTitle').textContent='Yeni Masa Ekle';$('tableDialog').showModal()};
+function editTable(id){const t=state.tables.find(x=>x.id===id);if(!t)return;$('tableId').value=id;$('tableName').value=t.name;$('tableSort').value=Number(t.sort_order)||0;for(let i=1;i<=4;i++)$('rate'+i).value=rate(id,i);$('tableTitle').textContent='Masa ve Fiyatları';$('tableDialog').showModal();}
+$('tableForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const name=$('tableName').value.trim(),prices=[1,2,3,4].map(i=>Number($('rate'+i).value));if(!name||prices.some(v=>!Number.isFinite(v)||v<0))throw Error('İsim ve fiyatlar geçerli olmalı');const r=await db.rpc('cafe_save_table',{p_id:$('tableId').value||null,p_name:name,p_prices:prices});if(r.error)throw r.error;
+ const sort=Number($('tableSort').value);
+ if(!Number.isInteger(sort)||sort<0||sort>999999)throw Error('Masa sırası 0–999999 arasında tam sayı olmalı.');
+ const orderSave=await db.rpc('cafe_set_table_order',{p_table_id:r.data,p_sort_order:sort});
+ if(orderSave.error)throw orderSave.error;
+ $('tableDialog').close();await reload();msg('Masa ve sıralama kaydedildi.');}catch(x){msg(x.message,true)}finally{b.disabled=false}});
 let currentTable=null;function openSessionDialog(id){const t=state.tables.find(x=>x.id===id);if(!t||active(t))return;currentTable=t;$('sessionForm').reset();$('mode').value='unlimited';$('sessionTable').value=id;$('sessionTitle').textContent=t.name+' · Hesap Aç';updatePreview();$('sessionDialog').showModal();}
 for(const id of ['controllers','mode','entryType','entryValue'])$(id).addEventListener(id==='entryValue'?'input':'change',updatePreview);
 function updatePreview(){if(!currentTable)return;const n=Number($('controllers').value),hourly=rate(currentTable.id,n),mode=$('mode').value,typ=$('entryType').value,val=Number($('entryValue').value);$('timedFields').hidden=mode==='unlimited';$('valueLabel').firstChild.textContent=typ==='minutes'?'Dakika':'Tutar (TL)';$('entryValue').step=typ==='minutes'?'1':'0.01';$('entryValue').placeholder=typ==='minutes'?'Ör. 80':'Ör. 250';if(mode==='unlimited'){$('calculated').textContent=`Saatlik: ${money(hourly)} · Süre otomatik sayılacak.`;return;}if(hourly<=0){$('calculated').textContent='Bu kol için saatlik fiyatı önce masa ayarlarından belirle.';return;}if(!Number.isFinite(val)||val<=0){$('calculated').textContent=`Saatlik ${money(hourly)} · Dakika veya tutar gir.`;return;}const seconds=typ==='minutes'?val*60:Math.round(val*3600/hourly),amount=typ==='minutes'?roundUpFive(hourly*val/60):val;$('calculated').textContent=`Seçim: ${n} Kol · Süre: ${fmtTime(seconds)} · Sabit oyun ücreti: ${money(amount)}`;}
@@ -208,4 +213,70 @@ $('receiptConfirm').onclick=async()=>{
  }catch(e){msg(e.message,true);$('receiptWarning').textContent='İşlem doğrulanamadı: '+e.message;}
  finally{button.disabled=false}
 };
+
+// V7 Rapor ekranı: geçmiş hesaplar ana masa yükleme sınırından bağımsız alınır.
+const reportDate=d=>{const a=new Date(d);return `${a.getFullYear()}-${String(a.getMonth()+1).padStart(2,'0')}-${String(a.getDate()).padStart(2,'0')}`};
+function initReportDates(){const now=new Date();$('reportTo').value=reportDate(now);const earlier=new Date(now);earlier.setDate(earlier.getDate()-29);$('reportFrom').value=reportDate(earlier)}
+function switchReports(show){$('reportsView').hidden=!show;$('cards').hidden=show;document.querySelector('.stats').hidden=show;$('recentHistory').hidden=show;if(show){$('reportTable').innerHTML='<option value="">Tüm masalar</option>'+state.tables.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');$('reportsView').scrollIntoView({behavior:'smooth',block:'start'});}else window.scrollTo({top:0,behavior:'smooth'});}
+$('showReports').onclick=()=>{switchReports(true);if(!$('reportRows').children.length)loadReport()};
+$('backToTables').onclick=()=>switchReports(false);
+$('reportFilters').addEventListener('submit',e=>{e.preventDefault();loadReport()});
+const dateStart=s=>new Date(`${s}T00:00:00`).toISOString();
+const dateEnd=s=>{const d=new Date(`${s}T00:00:00`);d.setDate(d.getDate()+1);return d.toISOString()};
+const minutesLabel=seconds=>{const m=Math.ceil(Math.max(0,seconds)/60);return `${m} dk (${fmtTime(seconds)})`};
+let reportLoading=false;
+async function loadReport(){
+ if(reportLoading)return;
+ const from=$('reportFrom').value,to=$('reportTo').value,table=$('reportTable').value;
+ if(!from||!to||from>to){$('reportStatus').textContent='Başlangıç ve bitiş tarihlerini kontrol edin.';return;}
+ reportLoading=true;$('reportStatus').textContent='Kapanan hesaplar ve adisyon kalemleri yükleniyor...';
+ $('reportRows').replaceChildren();$('reportFooter').replaceChildren();$('reportSummary').replaceChildren();
+ try{
+  // Bütün sayfalar okunur: yalnızca en son 250 hesaba dayanılmaz.
+  const sessions=[];let offset=0;
+  while(true){
+   let q=db.from('cafe_sessions').select('id,table_id,controllers,mode,started_at,ended_at,final_game_amount,final_order_amount,final_total_amount')
+     .not('ended_at','is',null).gte('ended_at',dateStart(from)).lt('ended_at',dateEnd(to))
+     .order('ended_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+249);
+   if(table)q=q.eq('table_id',table);
+   const r=await q;if(r.error)throw r.error;sessions.push(...(r.data||[]));
+   if(!r.data||r.data.length<250)break;
+   offset+=250;if(offset>=25000)throw Error('Bu tarih aralığında 25.000’den fazla hesap var. Daha kısa bir tarih aralığı seç.');
+  }
+  if(!sessions.length){$('reportStatus').textContent='Seçilen tarih aralığında kapanmış hesap bulunamadı.';return;}
+  const ids=sessions.map(s=>s.id),manual=[],links=[];
+  for(let i=0;i<ids.length;i+=100){
+   const slice=ids.slice(i,i+100);
+   let start=0;while(true){const r=await db.from('cafe_manual_items').select('session_id,product_name,qty,unit_price').in('session_id',slice).range(start,start+999);if(r.error)throw r.error;manual.push(...(r.data||[]));if((r.data||[]).length<1000)break;start+=1000;}
+   start=0;while(true){const r=await db.from('cafe_session_orders').select('session_id,order_id').in('session_id',slice).range(start,start+999);if(r.error)throw r.error;links.push(...(r.data||[]));if((r.data||[]).length<1000)break;start+=1000;}
+  }
+  const orders=new Map(),orderIds=[...new Set(links.map(l=>l.order_id))];
+  for(let i=0;i<orderIds.length;i+=100){const r=await db.from('orders').select('id,status,total,order_items(product_name,qty,unit_price)').in('id',orderIds.slice(i,i+100));if(r.error)throw r.error;for(const o of r.data||[])orders.set(o.id,o);}
+  const mBy=new Map(),lBy=new Map();
+  for(const m of manual){if(!mBy.has(m.session_id))mBy.set(m.session_id,[]);mBy.get(m.session_id).push(m)}
+  for(const l of links){if(!lBy.has(l.session_id))lBy.set(l.session_id,[]);lBy.get(l.session_id).push(l.order_id)}
+  const summary={count:sessions.length,seconds:0,game:0,qr:0,manual:0,total:0};
+  const rows=[];
+  for(const s of sessions){
+   const secs=Math.max(0,Math.floor((new Date(s.ended_at)-new Date(s.started_at))/1000));
+   const manualItems=mBy.get(s.id)||[],qrIds=lBy.get(s.id)||[];
+   const qrItems=[];
+   let qrTotal=0;
+   for(const id of qrIds){const o=orders.get(id);if(!o||o.status==='cancelled')continue;qrTotal+=Number(o.total||0);for(const p of o.order_items||[])qrItems.push({name:p.product_name,qty:Number(p.qty||0),price:Number(p.unit_price||0)});}
+   const manualTotal=manualItems.reduce((n,m)=>n+Number(m.qty||0)*Number(m.unit_price||0),0);
+   const game=Number(s.final_game_amount||0),total=Number(s.final_total_amount??(game+Number(s.final_order_amount||0)));
+   summary.seconds+=secs;summary.game+=game;summary.qr+=qrTotal;summary.manual+=manualTotal;summary.total+=total;
+   const details=(title,items)=>`<div class="report-group"><b>${title}</b>${items.length?items.map(x=>`<div>${Number(x.qty)} × ${esc(x.name)} — ${money(Number(x.qty)*Number(x.price))}</div>`).join(''):'<div>Yok</div>'}</div>`;
+   const name=state.tables.find(t=>t.id===s.table_id)?.name||'Silinmiş masa';
+   rows.push(`<tr><td><strong>${esc(name)}</strong><br><small>${new Date(s.ended_at).toLocaleString('tr-TR')}</small><br><small>${Number(s.controllers)} Kol · ${s.mode==='timed'?'Süreli':'Süresiz'}</small><details class="report-detail"><summary>Alınanları göster</summary>${details('QR siparişleri',qrItems)}${details('Kasa adisyonu',manualItems.map(m=>({name:m.product_name,qty:m.qty,price:m.unit_price})))}</details></td><td>${minutesLabel(secs)}</td><td>${money(game)}</td><td>${money(qrTotal)}</td><td>${money(manualTotal)}</td><td><strong>${money(total)}</strong></td></tr>`);
+  }
+  $('reportRows').innerHTML=rows.join('');
+  $('reportFooter').innerHTML=`<tr><th>GENEL TOPLAM · ${summary.count} hesap</th><th>${Math.ceil(summary.seconds/60)} dk</th><th>${money(summary.game)}</th><th>${money(summary.qr)}</th><th>${money(summary.manual)}</th><th>${money(summary.total)}</th></tr>`;
+  $('reportSummary').innerHTML=`<div><span>Kapanan hesap</span><strong>${summary.count}</strong></div><div><span>Oyun geliri</span><strong>${money(summary.game)}</strong></div><div><span>QR + Kasa adisyonu</span><strong>${money(summary.qr+summary.manual)}</strong></div><div><span>TOPLAM TUTAR</span><strong>${money(summary.total)}</strong></div>`;
+  $('reportStatus').textContent=`${summary.count} kapanmış hesap listelendi. Detaylar için “Alınanları göster”e tıkla. Tutarlar kapanış kayıtlarına dayanır; tahsilat bilgisi değildir.`;
+ }catch(e){$('reportStatus').textContent='Rapor alınamadı: '+e.message;}
+ finally{reportLoading=false}
+}
+initReportDates();
+
 init();
