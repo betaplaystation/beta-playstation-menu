@@ -4,7 +4,7 @@ const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 let selectedTableId=null, currentDeskTab="tables";
 const bulkSelected=new Set();let bulkMode=null,bulkWorking=false,bulkSuppressClick=false;
-const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],advances:[],hiddenReports:[],user:null,refreshBusy:false};
+const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],advances:[],hiddenReports:[],restoreEvents:[],user:null,refreshBusy:false};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -57,6 +57,8 @@ async function reload(silent=false){
   state.links=[];state.orders=[];state.manualItems=[];state.segments=[];state.payments=[];state.advances=[];
   const hidden=await db.from('cafe_report_hidden_v26').select('session_id').limit(1000);
   if(hidden.error)throw hidden.error;state.hiddenReports=(hidden.data||[]).map(x=>x.session_id);
+  const rev=await db.from('cafe_restore_events_v41').select('session_id,table_id,restored_at,closing_snapshot,payment_snapshot,advance_snapshot').order('restored_at',{ascending:false}).limit(50);
+  if(rev.error)throw rev.error;state.restoreEvents=rev.data||[];
   if(sessionIds.length){
    const sg=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,short_fee,rounding_step,started_at').in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000);
    if(sg.error)throw sg.error;
@@ -115,7 +117,8 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
   const events=[{type:'open',at:s.started_at,session:s}];
   if(s.ended_at&&!isReportHidden(s.id))events.push({type:'close',at:s.ended_at,session:s});
   return events;
- }).filter(e=>Number.isFinite(Date.parse(e.at)))
+ }).concat(state.restoreEvents.map(r=>({type:'restore',at:r.restored_at,session:state.sessions.find(s=>s.id===r.session_id)||r.closing_snapshot,restore:r})))
+   .filter(e=>Number.isFinite(Date.parse(e.at)))
    .sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,20);
  $('history').innerHTML=lastEvents.length?lastEvents.map(e=>{
   const s=e.session;
@@ -123,6 +126,12 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
    .sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at))[0];
   const name=esc(state.tables.find(t=>t.id===s.table_id)?.name||'Masa');
   const when=new Date(e.at).toLocaleString('tr-TR');
+  if(e.type==='restore'){
+   const former=e.restore.payment_snapshot;
+   const advance=e.restore.advance_snapshot;
+   const total=(Number(former?.cash_amount||0)+Number(former?.card_amount||0))+(former?0:Number(advance?.amount||0));
+   return `<div class="historyrow recent-event recent-open"><div class="recent-info"><strong>↩ 🟢 ${name} — HESAP GERİ ALINDI</strong><div>Geri alma: ${when}</div><div>Ödeme kaydı iptal edildi: ${money(total)} · Hesap tekrar açık</div></div></div>`;
+  }
   if(e.type==='open'){
    return `<div class="historyrow recent-event recent-open"><div class="recent-info"><strong>🟢 ${name} — HESAP AÇILDI</strong><div>Açılış: ${when}</div><div>🎮 ${Number(initial?.controllers||s.controllers)||1} kol ile açıldı</div></div></div>`;
   }
@@ -146,8 +155,8 @@ $('restoreConfirm').addEventListener('click',async()=>{
  if(!restoreId)return;
  const btn=$('restoreConfirm');btn.disabled=true;
  try{
-  const r=await db.rpc('cafe_restore_closed_v38',{p_session_id:restoreId});if(r.error)throw r.error;
-  $('restoreDialog').close();restoreId=null;await reload();msg('Kapatılmış hesap yeniden açıldı. Kapanış tutarı kaldırıldı; süre işlemeye devam ediyor.');
+  const r=await db.rpc('cafe_restore_closed_v41',{p_session_id:restoreId});if(r.error)throw r.error;
+  $('restoreDialog').close();restoreId=null;await reload();msg('Hesap geri alındı. Rapor ve aktif ödeme kaydı kaldırıldı; Son İşlemler güncellendi. Gerçek nakit/POS iadesini ayrıca yapmalısın.');
  }catch(e){msg('Hesap geri alınamadı: '+e.message,true);alert('Hesap geri alınamadı: '+e.message)}finally{btn.disabled=false}
 });
 // V30: kompakt masa planı, seçilen masanın bütün işlemleri sol detay panelinde.
@@ -988,10 +997,9 @@ function hideTableContext(){contextMenu.hidden=true;contextTableId=null}
 function showTableContext(id,x,y){
  contextTableId=id;const t=state.tables.find(t=>t.id===id),s=t&&active(t);
  const last=state.sessions.find(s=>s.table_id===id&&s.ended_at);
- const hasPayment=last&&state.payments.some(p=>p.session_id===last.id);
  for(const b of contextMenu.querySelectorAll('button')){
   const a=b.dataset.contextAction;
-  b.disabled=(a==='manual'||a==='manage'||a==='close')&&!s || a==='restore'&&(!last||!!s||!!hasPayment)||a==='partial';
+  b.disabled=(a==='manual'||a==='manage'||a==='close')&&!s || a==='restore'&&(!last||!!s)||a==='partial';
   if(a==='partial')b.title='Açık hesaptan kısmi tahsilat için veritabanı desteği gerekiyor; şimdilik kapalı.';
  }
  contextMenu.hidden=false;contextMenu.style.left=Math.max(8,Math.min(x,window.innerWidth-255))+'px';
