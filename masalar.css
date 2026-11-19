@@ -87,3 +87,18 @@
 @media (prefers-reduced-motion: no-preference) {
   .card, button { transition: border-color .15s ease,background-color .15s ease; }
 }
+
+/* V10 - Hesap duzenleme, eski/yeni tarife, rapor renkleri */
+.manage-dialog{width:min(95vw,740px);max-height:90%;}
+.manage-box{background:#201b1f;border:1px solid #493139;border-radius:12px;padding:15px;margin:12px 0}
+.manage-box h3{margin:0 0 10px;font-size:16px}
+.manage-box small{display:block;margin-top:10px;line-height:1.5}
+.manage-box button{margin-top:8px}
+.manual-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0}
+.danger-small{padding:4px 9px;font-size:12px;flex:none}
+.history-v10{align-items:center;display:grid;grid-template-columns:minmax(160px,1fr) minmax(210px,1.5fr) auto;gap:15px;padding:15px 8px}
+.history-v10>div{line-height:1.8;font-size:13px}
+.history-start{color:#72e7a2}.history-end{color:#ff797d}
+.history-end strong{font-size:16px}
+.report-start{color:#64d992!important}.report-end{color:#ff757b!important}
+@media(max-width:760px){.history-v10{grid-template-columns:1fr}.history-v10 button{justify-self:start}}

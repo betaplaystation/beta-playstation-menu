@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
-const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],user:null,refreshBusy:false};
+const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],user:null,refreshBusy:false};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -14,7 +14,20 @@ const rate=(id,n)=>Number(state.rates.find(r=>r.table_id===id&&r.controllers===N
 // Oyun hesabı: geçen süreyi üst tam dakikaya, oyun ücretini üst 5 TL'ye tamamla.
 // Süreli hesapta fiyat doğrudan girildiyse kullanıcının belirlediği sabit tutara dokunma.
 const roundUpFive=n=>Math.ceil((Number(n)-1e-9)/5)*5;
-const gameAmount=s=>s.mode==='timed'?Number(s.agreed_price):roundUpFive(Number(s.hourly_price)*Math.ceil(elapsed(s)/60)/60);
+const gameAmount=s=>{
+ if(s.ended_at)return Number(s.final_game_amount||0);
+ if(s.mode==='timed'&&!s.pricing_modified)return Number(s.agreed_price||0);
+ const start=Date.parse(s.started_at),end=s.mode==='timed'?start+Number(s.planned_seconds||0)*1000:start+Math.ceil(Math.max(0,Date.now()-start)/60000)*60000;
+ const segs=state.segments.filter(x=>x.session_id===s.id).sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at));
+ if(!segs.length)return s.mode==='timed'?Number(s.agreed_price||0):roundUpFive(Number(s.hourly_price)*Math.ceil(elapsed(s)/60)/60);
+ let total=Number(s.pricing_adjustment||0);
+ for(let i=0;i<segs.length;i++){
+  const from=Math.max(start,Date.parse(segs[i].started_at));
+  const to=Math.min(end,i+1<segs.length?Date.parse(segs[i+1].started_at):end);
+  if(to>from)total+=(to-from)*Number(segs[i].hourly_price)/3600000;
+ }
+ return roundUpFive(Math.max(0,total));
+};
 function setAuth(on){$('login').hidden=on;$('app').hidden=!on;$('logout').hidden=!on;}
 async function requireAuthorized(){const {data:{user},error}=await db.auth.getUser();if(error)throw error;if(!user)return false;const a=await db.from('admin_users').select('user_id').eq('user_id',user.id).maybeSingle();if(a.error)throw a.error;state.user=a.data?user:null;return Boolean(a.data)}
 async function init(){if(!db){msg('Supabase config.js bağlantısı eksik.',true);return;}try{if(await requireAuthorized()){setAuth(true);await reload();}else setAuth(false);}catch(e){msg(e.message,true)}}
@@ -34,9 +47,12 @@ async function reload(silent=false){
   [state.tables,state.rates,state.sessions,state.charges]=r.map(x=>x.data||[]);
   const interesting=state.sessions.filter(s=>!s.ended_at).concat(state.sessions.filter(s=>s.ended_at).slice(0,15));
   const sessionIds=interesting.map(s=>s.id);
-  state.links=[];state.orders=[];state.manualItems=[];
+  state.links=[];state.orders=[];state.manualItems=[];state.segments=[];
   if(sessionIds.length){
-   const manual=await db.from('cafe_manual_items').select('id,session_id,product_id,product_name,qty,unit_price,created_at').in('session_id',sessionIds).order('created_at',{ascending:true}).limit(1000);
+   const sg=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,started_at').in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000);
+   if(sg.error)throw sg.error;
+   state.segments=sg.data||[];
+   const manual=await db.from('cafe_manual_items').select('id,session_id,product_id,product_name,qty,unit_price,created_at,voided_at').in('session_id',sessionIds).order('created_at',{ascending:true}).limit(1000);
    if(manual.error)throw manual.error;
    state.manualItems=manual.data||[];
    const links=await db.from('cafe_session_orders').select('session_id,order_id').in('session_id',sessionIds).limit(1000);
@@ -56,10 +72,10 @@ async function reload(silent=false){
  }catch(e){msg('Masa veya sipariş verisi alınamadı: '+e.message,true)}
  finally{state.refreshBusy=false}
 }
-const manualForSession=id=>state.manualItems.filter(i=>i.session_id===id);
+const manualForSession=id=>state.manualItems.filter(i=>i.session_id===id&&!i.voided_at);
 const manualAmount=id=>manualForSession(id).reduce((a,i)=>a+Number(i.unit_price||0)*Number(i.qty||0),0);
 const productAmount=id=>orderAmount(id)+manualAmount(id);
-const manualDetails=id=>manualForSession(id).length?manualForSession(id).map(i=>`<div class="muted">${Number(i.qty)} × ${esc(i.product_name)} · ${money(Number(i.qty)*Number(i.unit_price))}</div>`).join(''):'<div class="muted">Elle eklenen ürün yok.</div>';
+const manualDetails=(id,allowRemove=false)=>manualForSession(id).length?manualForSession(id).map(i=>`<div class="manual-row muted"><span>${Number(i.qty)} × ${esc(i.product_name)} · ${money(Number(i.qty)*Number(i.unit_price))}</span>${allowRemove?`<button class="secondary danger-small" type="button" data-void-item="${esc(i.id)}">Sil</button>`:''}</div>`).join(''):'<div class="muted">Elle eklenen ürün yok.</div>';
 const ordersForSession=id=>{
  const ids=new Set(state.links.filter(l=>l.session_id===id).map(l=>l.order_id));
  return state.orders.filter(o=>ids.has(o.id)).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -72,9 +88,17 @@ const orderDetails=id=>{
  return os.map(o=>`<div class="order-item"><div class="minirow"><span>${new Date(o.created_at).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})} · ${o.status==='cancelled'?'İPTAL · ':''}#${esc(o.id.slice(0,8))}</span><strong>${o.status==='cancelled'?'<s>'+money(o.total)+'</s>':money(o.total)}</strong></div>${(o.order_items||[]).map(i=>`<div class="muted">${Number(i.qty)||0} × ${esc(i.product_name)}</div>`).join('')}</div>`).join('');
 };
 function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>active(t));$('totalTables').textContent=ts.length;$('busyTables').textContent=busy.length;$('freeTables').textContent=ts.length-busy.length;
- $('cards').innerHTML=ts.length?ts.map(t=>{const s=active(t);return `<article class="card ${s?'card-open':'card-closed'}" style="--closed-color:${validTableColor(t.closed_color)}"><div class="cardtop"><h3>${esc(t.name)}</h3><span class="tag ${s?'busy':''}" id="tag-${t.id}">${s?'● DOLU':'● BOŞ'}</span></div><div class="line"></div>${s?`<div class="muted">${s.controllers} Kol · ${s.mode==='timed'?'Süreli':'Süresiz'} · ${money(s.hourly_price)}/saat</div><div class="minirow"><span>Geçen süre</span><strong class="time" data-timer="${s.id}">00:00:00</strong></div>${s.mode==='timed'?`<div class="minirow"><span>Kalan süre</span><strong data-left="${s.id}">—</strong></div>`:''}<div class="minirow"><span>Oyun ücreti</span><strong class="amount" data-amount="${s.id}"></strong></div><div class="minirow"><span>QR siparişleri</span><strong>${money(orderAmount(s.id))}</strong></div><div class="minirow"><span>Manuel adisyon</span><strong>${money(manualAmount(s.id))}</strong></div><div class="minirow due"><span>TOPLAM ADİSYON</span><strong data-total="${s.id}">${money(gameAmount(s)+productAmount(s.id))}</strong></div><details class="order-detail"><summary>🧾 Siparişler (${ordersForSession(s.id).length})</summary>${orderDetails(s.id)}<hr><b>Manuel eklenenler</b>${manualDetails(s.id)}</details><div class="actions"><button type="button" class="secondary" data-add-manual="${s.id}">+ Adisyon Ekle</button><button data-close-session="${s.id}">Hesabı Kapat</button><button class="secondary" data-edit-table="${t.id}">Ayarlar</button></div>`:`<div class="muted">Hesap açılmayı bekliyor</div><p class="muted">1–4 kol için ayrı saatlik ücret</p><div class="actions"><button data-open-table="${t.id}">Hesap Aç</button><button class="secondary" data-edit-table="${t.id}">Ayarlar</button></div>`}</article>`;}).join(''):'<p class="muted">Henüz aktif masa yok. “Masa Ekle” ile başlayın.</p>';
+ $('cards').innerHTML=ts.length?ts.map(t=>{const s=active(t);return `<article class="card ${s?'card-open':'card-closed'}" style="--closed-color:${validTableColor(t.closed_color)}"><div class="cardtop"><h3>${esc(t.name)}</h3><span class="tag ${s?'busy':''}" id="tag-${t.id}">${s?'● DOLU':'● BOŞ'}</span></div><div class="line"></div>${s?`<div class="muted">${s.controllers} Kol · ${s.mode==='timed'?'Süreli':'Süresiz'} · ${money(s.hourly_price)}/saat</div><div class="minirow"><span>Geçen süre</span><strong class="time" data-timer="${s.id}">00:00:00</strong></div>${s.mode==='timed'?`<div class="minirow"><span>Kalan süre</span><strong data-left="${s.id}">—</strong></div>`:''}<div class="minirow"><span>Oyun ücreti</span><strong class="amount" data-amount="${s.id}"></strong></div><div class="minirow"><span>QR siparişleri</span><strong>${money(orderAmount(s.id))}</strong></div><div class="minirow"><span>Manuel adisyon</span><strong>${money(manualAmount(s.id))}</strong></div><div class="minirow due"><span>TOPLAM ADİSYON</span><strong data-total="${s.id}">${money(gameAmount(s)+productAmount(s.id))}</strong></div><details class="order-detail"><summary>🧾 Siparişler (${ordersForSession(s.id).length})</summary>${orderDetails(s.id)}<hr><b>Manuel eklenenler</b>${manualDetails(s.id,true)}</details><div class="actions"><button type="button" class="secondary" data-add-manual="${s.id}">+ Adisyon Ekle</button><button data-close-session="${s.id}">Hesabı Kapat</button><button class="secondary" data-manage-session="${s.id}">⚙️ Hesabı Düzenle</button><button class="secondary" data-edit-table="${t.id}">Ayarlar</button></div>`:`<div class="muted">Hesap açılmayı bekliyor</div><p class="muted">1–4 kol için ayrı saatlik ücret</p><div class="actions"><button data-open-table="${t.id}">Hesap Aç</button><button class="secondary" data-edit-table="${t.id}">Ayarlar</button></div>`}</article>`;}).join(''):'<p class="muted">Henüz aktif masa yok. “Masa Ekle” ile başlayın.</p>';
  document.querySelectorAll('[data-open-table]').forEach(b=>b.onclick=()=>openSessionDialog(b.dataset.openTable));document.querySelectorAll('[data-edit-table]').forEach(b=>b.onclick=()=>editTable(b.dataset.editTable));document.querySelectorAll('[data-add-manual]').forEach(b=>b.onclick=()=>openManualDialog(b.dataset.addManual));document.querySelectorAll('[data-close-session]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.closeSession));
- const closed=state.sessions.filter(s=>s.ended_at).slice(0,15);$('history').innerHTML=closed.length?closed.map(s=>`<div class="historyrow"><span><b>${esc(state.tables.find(t=>t.id===s.table_id)?.name||'Masa')}</b> · ${s.controllers} Kol · ${new Date(s.ended_at).toLocaleString('tr-TR')}</span><strong>${money(s.final_total_amount??s.final_game_amount)} <small class="muted">(oyun ${money(s.final_game_amount)}, ürün ${money(s.final_order_amount??0)})</small></strong><button class="secondary" type="button" data-receipt-history="${s.id}">🧾 Adisyonu Gör</button></div>`).join(''):'<p class="muted">Henüz kapatılmış hesap yok.</p>';document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));tick();}
+ document.querySelectorAll('[data-manage-session]').forEach(b=>b.onclick=()=>openManageSession(b.dataset.manageSession));
+ document.querySelectorAll('[data-void-item]').forEach(b=>b.onclick=()=>voidManual(b.dataset.voidItem));
+ const closed=state.sessions.filter(s=>s.ended_at).slice(0,15);
+ $('history').innerHTML=closed.length?closed.map(s=>{
+ const original=state.segments.filter(z=>z.session_id===s.id).sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at))[0];
+ const secs=Math.max(0,Math.floor((Date.parse(s.ended_at)-Date.parse(s.started_at))/1000));
+ return `<div class="historyrow history-v10"><div class="history-start"><strong>${esc(state.tables.find(t=>t.id===s.table_id)?.name||'Masa')}</strong><div>🟢 AÇILIŞ · ${new Date(s.started_at).toLocaleString('tr-TR')}</div><div>🎮 ${Number(original?.controllers||s.controllers)} Kol ile açıldı</div></div><div class="history-end"><div>🔴 KAPANIŞ · ${new Date(s.ended_at).toLocaleString('tr-TR')}</div><div>⏱️ Süre: ${Math.ceil(secs/60)} dakika · ${fmtTime(secs)}</div><div>Oyun: ${money(s.final_game_amount)} · Adisyon: ${money(s.final_order_amount||0)}</div><strong>TOPLAM: ${money(s.final_total_amount??s.final_game_amount)}</strong></div><button class="secondary" type="button" data-receipt-history="${s.id}">🧾 Rapor / Adisyon</button></div>`;
+ }).join(''):'<p class="muted">Henüz kapatılmış hesap yok.</p>';
+ document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));tick();}
 function tick(){if($('app').hidden)return;for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
@@ -145,6 +169,57 @@ $('chargeForm').addEventListener('submit',async e=>{
   await reload(true);renderChargeList();clearChargeForm();msg('Kasa adisyon kalemi kaydedildi.');
  }catch(err){msg('Adisyon kalemi kaydedilemedi: '+err.message,true)}finally{btn.disabled=false}
 });
+// V10 — HESAP DUZENLEME: tum islemler sunucudaki yetkili RPC ile yapilir.
+let manageSessionId=null;
+function openManageSession(id){
+ const s=state.sessions.find(x=>x.id===id&&!x.ended_at);if(!s)return;
+ manageSessionId=id;
+ const t=state.tables.find(x=>x.id===s.table_id);
+ $('manageTitle').textContent='⚙️ '+(t?.name||'Masa')+' · Hesap İşlemleri';
+ const d=new Date(s.started_at),local=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+ $('manageStart').value=local;
+ $('manageTarget').innerHTML='<option value="">Hedef masa seç</option>'+state.tables.filter(x=>x.active&&x.id!==s.table_id&&!active(x)).map(x=>`<option value="${esc(x.id)}">${esc(x.name)} · ${money(rate(x.id,s.controllers))}/saat</option>`).join('');
+ $('manageControllers').value=String(s.controllers);
+ $('manageDelta').value='15';$('timedEdit').hidden=s.mode!=='timed';
+ $('manageInfo').textContent=`${s.controllers} kol · ${s.mode==='timed'?'Süreli':'Süresiz'} · Oyun: ${money(gameAmount(s))}`;
+ $('manageDialog').showModal();
+}
+async function manageAction(fn,args,success){
+ if(!manageSessionId)return;
+ const buttons=[...$('manageDialog').querySelectorAll('button[data-operation]')];buttons.forEach(x=>x.disabled=true);
+ try{
+  const r=await db.rpc(fn,{p_session_id:manageSessionId,...args});if(r.error)throw r.error;
+  $('manageDialog').close();await reload();msg(success);
+ }catch(e){msg('İşlem yapılamadı: '+e.message,true)}finally{buttons.forEach(x=>x.disabled=false)}
+}
+$('manageDialog').querySelectorAll('[data-operation]').forEach(b=>b.addEventListener('click',async()=>{
+ const op=b.dataset.operation;
+ if(op==='start'){
+  const raw=$('manageStart').value;if(!raw)return msg('Geçerli açılış saati gir.',true);
+  const date=new Date(raw);if(Number.isNaN(+date))return msg('Açılış tarihi geçersiz.',true);
+  if(!confirm('Hesap açılış saatini değiştirmek istediğine emin misin?'))return;
+  await manageAction('cafe_change_start_v10',{p_started_at:date.toISOString()},'Açılış saati değiştirildi.');
+ }else if(op==='move'){
+  const id=$('manageTarget').value;if(!id)return msg('Hedef masa seç.',true);
+  if(!confirm('Masa değişikliği bu andan itibaren yeni masanın tarifesine göre hesaplanacak. Onaylıyor musun?'))return;
+  await manageAction('cafe_move_session_v10',{p_target_table_id:id},'Hesap başka masaya taşındı; eski süre eski tarifede kaldı.');
+ }else if(op==='controllers'){
+  const n=Number($('manageControllers').value);
+  if(!confirm('Kol değişikliğinden sonraki süre yeni kol fiyatına göre hesaplanacak. Onaylıyor musun?'))return;
+  await manageAction('cafe_change_controllers_v10',{p_controllers:n},'Kol sayısı yeni fiyatıyla güncellendi.');
+ }else if(op==='plus'||op==='minus'){
+  const m=Number($('manageDelta').value);
+  if(!Number.isInteger(m)||m<1||m>1440)return msg('1–1440 dakika gir.',true);
+  await manageAction('cafe_change_timed_minutes_v10',{p_delta_minutes:op==='plus'?m:-m},'Süre güncellendi.');
+ }
+}));
+async function voidManual(id){
+ const row=state.manualItems.find(m=>m.id===id);
+ if(!row||!confirm(`${row.product_name} · ${row.qty} adet manuel adisyon iptal edilsin mi?`))return;
+ const r=await db.rpc('cafe_void_manual_v10',{p_item_id:id});
+ if(r.error){msg('Adisyon silinemedi: '+r.error.message,true);return;}
+ await reload();msg('Yanlış manuel adisyon iptal edildi; QR siparişleri etkilenmedi.');
+}
 let receiptSessionId=null;
 let receiptClosed=false;
 let receiptSnapshot=null;
@@ -161,7 +236,7 @@ function receiptData(s){
   for(const i of o.order_items||[])items.push({name:i.product_name,qty:Number(i.qty)||0,price:Number(i.unit_price)||0,source:'qr'});
  }
  return {id:s.id,closed,game,orders,total,seconds,items,
-  name:state.tables.find(t=>t.id===s.table_id)?.name||'Masa',controllers:s.controllers,
+  name:state.tables.find(t=>t.id===s.table_id)?.name||'Masa',controllers:s.controllers,segments:state.segments.filter(z=>z.session_id===s.id).sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at)),
   mode:s.mode,started:s.started_at,ended:s.ended_at};
 }
 const receiptHTML=r=>`<div class="receipt-brand">BETA <span>PLAYSTATION</span></div>
@@ -171,6 +246,7 @@ const receiptHTML=r=>`<div class="receipt-brand">BETA <span>PLAYSTATION</span></
  <div><span>Oynanan süre</span><strong>${fmtTime(r.seconds)} (${Math.floor(r.seconds/60)} dk ${r.seconds%60} sn)</strong></div>
  <div><span>Açılış</span><strong>${new Date(r.started).toLocaleString('tr-TR')}</strong></div>
  <div><span>${r.closed?'Kapanış':'Durum'}</span><strong>${r.closed?new Date(r.ended).toLocaleString('tr-TR'):'Hesap açık'}</strong></div></div>
+ ${r.segments.length>1?`<h3>Oyun / Masa / Kol Değişiklikleri</h3>${r.segments.map((x,i)=>`<div class="receipt-line"><span>${i?'Değişiklik':'Başlangıç'} · ${new Date(x.started_at).toLocaleTimeString('tr-TR')} · ${esc(state.tables.find(t=>t.id===x.table_id)?.name||'Masa')} · ${Number(x.controllers)} kol</span><strong>${money(x.hourly_price)}/saat</strong></div>`).join('')}`:''}
  <div class="receipt-line"><span>🎮 Oyun ücreti</span><strong>${money(r.game)}</strong></div>
  <h3>Alınan ürünler</h3>
  ${r.items.length?`<div class="receipt-products">${r.items.map(i=>`<div class="receipt-line"><span>${i.qty} × ${esc(i.name)} ${i.source==='manual'?'<small>• Manuel</small>':''} <small>(${money(i.price)} / adet)</small></span><strong>${money(i.qty*i.price)}</strong></div>`).join('')}</div>`:'<p class="muted">Bu hesapta ürün siparişi bulunmuyor.</p>'}
@@ -247,10 +323,12 @@ async function loadReport(){
    offset+=250;if(offset>=25000)throw Error('Bu tarih aralığında 25.000’den fazla hesap var. Daha kısa bir tarih aralığı seç.');
   }
   if(!sessions.length){$('reportStatus').textContent='Seçilen tarih aralığında kapanmış hesap bulunamadı.';return;}
-  const ids=sessions.map(s=>s.id),manual=[],links=[];
+  const ids=sessions.map(s=>s.id),manual=[],links=[],reportSegments=[];
   for(let i=0;i<ids.length;i+=100){
    const slice=ids.slice(i,i+100);
-   let start=0;while(true){const r=await db.from('cafe_manual_items').select('session_id,product_name,qty,unit_price').in('session_id',slice).range(start,start+999);if(r.error)throw r.error;manual.push(...(r.data||[]));if((r.data||[]).length<1000)break;start+=1000;}
+   const sgs=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,started_at').in('session_id',slice).order('started_at',{ascending:true}).limit(1000);
+   if(sgs.error)throw sgs.error;reportSegments.push(...(sgs.data||[]));
+   let start=0;while(true){const r=await db.from('cafe_manual_items').select('session_id,product_name,qty,unit_price,voided_at').in('session_id',slice).range(start,start+999);if(r.error)throw r.error;manual.push(...(r.data||[]));if((r.data||[]).length<1000)break;start+=1000;}
    start=0;while(true){const r=await db.from('cafe_session_orders').select('session_id,order_id').in('session_id',slice).range(start,start+999);if(r.error)throw r.error;links.push(...(r.data||[]));if((r.data||[]).length<1000)break;start+=1000;}
   }
   const orders=new Map(),orderIds=[...new Set(links.map(l=>l.order_id))];
@@ -262,7 +340,7 @@ async function loadReport(){
   const rows=[];
   for(const s of sessions){
    const secs=Math.max(0,Math.floor((new Date(s.ended_at)-new Date(s.started_at))/1000));
-   const manualItems=mBy.get(s.id)||[],qrIds=lBy.get(s.id)||[];
+   const manualItems=(mBy.get(s.id)||[]).filter(m=>!m.voided_at),qrIds=lBy.get(s.id)||[];
    const qrItems=[];
    let qrTotal=0;
    for(const id of qrIds){const o=orders.get(id);if(!o||o.status==='cancelled')continue;qrTotal+=Number(o.total||0);for(const p of o.order_items||[])qrItems.push({name:p.product_name,qty:Number(p.qty||0),price:Number(p.unit_price||0)});}
@@ -271,7 +349,9 @@ async function loadReport(){
    summary.seconds+=secs;summary.game+=game;summary.qr+=qrTotal;summary.manual+=manualTotal;summary.total+=total;
    const details=(title,items)=>`<div class="report-group"><b>${title}</b>${items.length?items.map(x=>`<div>${Number(x.qty)} × ${esc(x.name)} — ${money(Number(x.qty)*Number(x.price))}</div>`).join(''):'<div>Yok</div>'}</div>`;
    const name=state.tables.find(t=>t.id===s.table_id)?.name||'Silinmiş masa';
-   rows.push(`<tr><td><strong>${esc(name)}</strong><br><small>${new Date(s.ended_at).toLocaleString('tr-TR')}</small><br><small>${Number(s.controllers)} Kol · ${s.mode==='timed'?'Süreli':'Süresiz'}</small><details class="report-detail"><summary>Alınanları göster</summary>${details('QR siparişleri',qrItems)}${details('Kasa adisyonu',manualItems.map(m=>({name:m.product_name,qty:m.qty,price:m.unit_price})))}</details></td><td>${minutesLabel(secs)}</td><td>${money(game)}</td><td>${money(qrTotal)}</td><td>${money(manualTotal)}</td><td><strong>${money(total)}</strong></td></tr>`);
+   const sSeg=reportSegments.filter(z=>z.session_id===s.id),first=sSeg[0];
+   const changes=sSeg.length>1?`<div class="report-group"><b>Tarife değişiklikleri</b>${sSeg.map(z=>`<div>${new Date(z.started_at).toLocaleString('tr-TR')} · ${esc(state.tables.find(t=>t.id===z.table_id)?.name||'Masa')} · ${z.controllers} Kol · ${money(z.hourly_price)}/saat</div>`).join('')}</div>`:'';
+   rows.push(`<tr><td><strong>${esc(name)}</strong><br><small class="report-start">🟢 Açılış: ${new Date(s.started_at).toLocaleString('tr-TR')} · ${Number(first?.controllers||s.controllers)} Kol</small><br><small class="report-end">🔴 Kapanış: ${new Date(s.ended_at).toLocaleString('tr-TR')}</small><br><small>${s.mode==='timed'?'Süreli':'Süresiz'}</small><details class="report-detail"><summary>Alınanları göster</summary>${details('QR siparişleri',qrItems)}${details('Kasa adisyonu',manualItems.map(m=>({name:m.product_name,qty:m.qty,price:m.unit_price})))}${changes}</details></td><td>${minutesLabel(secs)}</td><td>${money(game)}</td><td>${money(qrTotal)}</td><td>${money(manualTotal)}</td><td><strong>${money(total)}</strong></td></tr>`);
   }
   $('reportRows').innerHTML=rows.join('');
   $('reportFooter').innerHTML=`<tr><th>GENEL TOPLAM · ${summary.count} hesap</th><th>${Math.ceil(summary.seconds/60)} dk</th><th>${money(summary.game)}</th><th>${money(summary.qr)}</th><th>${money(summary.manual)}</th><th>${money(summary.total)}</th></tr>`;
