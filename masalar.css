@@ -127,3 +127,16 @@
 #recentHistory #history .recent-close button * {
   color: #ffffff !important;
 }
+
+/* V13 — Masa kartlarının kullanıcı tarafından ayarlanabilen genişliği */
+.table-size-control {display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:5px 8px;border:1px solid #4b353b;border-radius:11px;background:#181518;}
+.table-size-control .size-label{font-size:13px;color:#e4cbd0;font-weight:700;white-space:nowrap;margin-right:4px;}
+.table-size-control .size-button{min-width:40px;min-height:39px;padding:6px 10px;font-size:22px;line-height:1;font-weight:800;}
+.table-size-control .size-reset{min-height:39px;padding:6px 9px;font-size:12px;}
+#cardSizeDisplay{font-size:12px;text-align:center;min-width:59px;font-weight:800;color:#fff;}
+/* Önceki V9 geniş ekran medya kurallarının üzerini yazmak için dosya sonunda tutulur. */
+#cards.cards{grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--beta-card-width,255px)),1fr));}
+#cards.cards .card{min-width:0;overflow-wrap:anywhere;}
+#cards.cards .card .time{font-size:clamp(18px,1.65vw,29px);}
+#cards.cards .card .actions button{min-width:min(100%,90px);}
+@media(max-width:550px){#cards.cards{grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--beta-card-width,255px)),1fr));}.table-size-control{width:100%;justify-content:center;}}
