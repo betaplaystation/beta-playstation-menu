@@ -286,14 +286,12 @@ async function showReceipt(id){
  $('receiptWarning').textContent=receiptClosed?'Bu hesap daha önce kapatılmıştır.':'Hesabı Kapat işlemini onaylayana kadar süre saymaya devam eder. Son tutar kapanış anında sunucuda hesaplanır.';
  $('receiptConfirm').hidden=receiptClosed;
  $('receiptCancel').textContent=receiptClosed?'Kapat':'Geri Dön';
- $('receiptPay').hidden=!receiptClosed;
- $('receiptPay').textContent=state.payments.some(p=>p.session_id===id)?'✓ Ödeme Kaydedildi':'💳 Ödeme Al';
- $('receiptPay').disabled=state.payments.some(p=>p.session_id===id);
+ $('embeddedPayment').hidden=!receiptClosed;
+ if(receiptClosed)fillPayment(id);
  $('receiptDialog').showModal();
 }
 $('receiptCancel').onclick=()=>$('receiptDialog').close();
 $('receiptPrint').onclick=()=>window.print();
-$('receiptPay').onclick=()=>{if(receiptSessionId)openPayment(receiptSessionId)};
 $('receiptConfirm').onclick=async()=>{
  if(!receiptSessionId||receiptClosed)return;
  const button=$('receiptConfirm');button.disabled=true;
@@ -309,10 +307,10 @@ $('receiptConfirm').onclick=async()=>{
   $('receiptTitle').textContent='✅ Hesap Kapatıldı · Adisyon';
   $('receiptBody').innerHTML=receiptHTML(receiptSnapshot);
   $('receiptWarning').textContent='Hesap kapatıldı. Şimdi Nakit / Kart / İskonto bölümünden ödeme kaydedebilirsin.';
-  $('receiptPay').hidden=false;$('receiptPay').disabled=false;$('receiptPay').textContent='💳 Ödeme Al';
+  $('embeddedPayment').hidden=false;
   button.hidden=true;$('receiptCancel').textContent='Kapat';
   msg(`${receiptSnapshot.name} hesabı kapatıldı. Toplam ${money(receiptSnapshot.total)}.`);
-  $('receiptDialog').close();openPayment(id);
+  fillPayment(id);
  }catch(e){msg(e.message,true);$('receiptWarning').textContent='İşlem doğrulanamadı: '+e.message;}
  finally{button.disabled=false}
 };
@@ -343,8 +341,7 @@ function updatePaymentPreview(){
   $('paymentWarning').textContent=diff===0?'Tutarlar eşleşiyor; ödemeyi kaydedebilirsin.':'Nakit ve kart toplamı ödenecek tutara eşit olmalı.';
  }catch(e){$('paymentSummary').textContent='Kontrol: '+e.message;$('paymentSave').disabled=true;$('paymentWarning').textContent=e.message}
 }
-async function openPayment(id){
- await reload(true);
+function fillPayment(id){
  const s=state.sessions.find(x=>x.id===id&&x.ended_at);
  if(!s){msg('Ödeme için önce hesabı kapatmalısın.',true);return;}
  paymentSessionId=id;
@@ -358,9 +355,13 @@ async function openPayment(id){
  $('paymentSave').hidden=disabled;
  if(disabled){
   $('paymentSummary').innerHTML=`<div class="payment-line"><span>İskonto</span><strong>${money(paid.discount_amount)}</strong></div><div class="payment-line"><span>Nakit</span><strong>${money(paid.cash_amount)}</strong></div><div class="payment-line"><span>Kart</span><strong>${money(paid.card_amount)}</strong></div><div class="payment-line payment-net"><span>Tahsil edilen</span><strong>${money(Number(paid.cash_amount)+Number(paid.card_amount))}</strong></div>`;
-  $('paymentWarning').textContent='✓ Bu hesabın ödemesi daha önce kaydedildi. Aynı hesap ikinci kez tahsil edilemez.';
+  $('paymentWarning').textContent='✓ Ödeme daha önce kaydedildi. İkinci tahsilat yapılamaz.';
  }else updatePaymentPreview();
- $('paymentDialog').showModal();
+}
+async function openPayment(id){
+ await showReceipt(id);
+ if(!receiptClosed)return;
+ $('embeddedPayment').hidden=false;
 }
 for(const id of ['payDiscountType','payDiscount','payCash','payCard'])$(id).addEventListener('input',updatePaymentPreview);
 $('paymentForm').addEventListener('submit',async e=>{
@@ -372,7 +373,8 @@ $('paymentForm').addEventListener('submit',async e=>{
   if(cents(cash)+cents(card)!==cents(paymentTotal())-cents(discount))throw Error('Nakit + Kart toplamı ödenecek tutara eşit olmalı.');
   const r=await db.rpc('cafe_record_payment_v16',{p_session_id:paymentSessionId,p_discount_amount:discount,p_cash_amount:cash,p_card_amount:card});
   if(r.error)throw r.error;
-  $('paymentDialog').close();await reload(true);
+  await reload(true);fillPayment(paymentSessionId);
+  $('receiptWarning').textContent='✓ Hesap kapatıldı ve ödeme kaydedildi.';
   msg('Ödeme kaydedildi: Nakit '+money(cash)+' · Kart '+money(card)+' · İskonto '+money(discount));
  }catch(err){$('paymentWarning').textContent='Ödeme kaydedilemedi: '+err.message;msg(err.message,true);updatePaymentPreview();}
  finally{button.disabled=false}

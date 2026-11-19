@@ -178,3 +178,14 @@
 .payment-history-btn{background:#165b3d;border-color:#2a9e6c;font-size:12px;padding:7px 9px}
 .payment-ok{color:#70e5a0;font-size:12px;font-weight:800}
 @media(max-width:550px){.history-actions{justify-content:flex-start}.payment-dialog .grid2{grid-template-columns:1fr}}
+
+/* V18: adisyon ve tahsilat tek ekran */
+.receipt-dialog{width:min(96vw,780px);max-height:90vh;overflow-y:auto}
+.embedded-payment{margin:18px 0;padding:18px;border-radius:12px;background:#1b171a;border:1px solid #7d3036}
+.embedded-payment h3{margin:0 0 10px;color:#ff6868;font-size:19px}
+.embedded-payment .payment-gross{display:flex;justify-content:space-between;gap:12px;background:#231a1d;border:1px solid #653038;border-radius:10px;padding:14px;margin:10px 0 18px;font-weight:700}
+.embedded-payment .payment-gross strong{color:#fff;font-size:21px}
+.embedded-payment .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.embedded-payment label{min-width:0}
+@media(max-width:550px){.embedded-payment .grid2{grid-template-columns:1fr}.embedded-payment{padding:12px}}
+@media print{#embeddedPayment{display:none!important;visibility:hidden!important}#embeddedPayment *{visibility:hidden!important}}
