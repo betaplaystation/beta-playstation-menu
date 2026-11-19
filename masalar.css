@@ -140,3 +140,24 @@
 #cards.cards .card .time{font-size:clamp(18px,1.65vw,29px);}
 #cards.cards .card .actions button{min-width:min(100%,90px);}
 @media(max-width:550px){#cards.cards{grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--beta-card-width,255px)),1fr));}.table-size-control{width:100%;justify-content:center;}}
+
+/* V14 — Son işlemler: kendi içinde dikey kaydırılan sabit yükseklikli bölüm.
+   Masa kartlarını, raporları ve kayıtları değiştirmez. */
+#recentHistory #history {
+  max-height: 360px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #a33b42 #211b20;
+  padding: 0 8px 4px 0;
+  align-content: start;
+}
+#recentHistory #history::-webkit-scrollbar {width: 9px;}
+#recentHistory #history::-webkit-scrollbar-track {background: #211b20;border-radius: 9px;}
+#recentHistory #history::-webkit-scrollbar-thumb {background: #a33b42;border-radius: 9px;border:2px solid #211b20;}
+#recentHistory #history::-webkit-scrollbar-thumb:hover {background: #e3434d;}
+#recentHistory {min-width: 0;}
+@media (max-width: 600px) {
+  #recentHistory #history {max-height: 300px;}
+}
