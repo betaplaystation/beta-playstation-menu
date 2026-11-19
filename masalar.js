@@ -3,6 +3,7 @@ const $=id=>document.getElementById(id);
 const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 let selectedTableId=null, currentDeskTab="tables";
+const bulkSelected=new Set();let bulkMode=null,bulkWorking=false,bulkSuppressClick=false;
 const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],advances:[],hiddenReports:[],user:null,refreshBusy:false};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
@@ -203,7 +204,7 @@ function renderDesktop(){
   const t=ts[i],s=active(t),full=cards[i];
   if(full)desktopFullCards.set(t.id,full);
   const tile=document.createElement('button');tile.type='button';tile.className='desk-tile '+(s?'desk-busy':'desk-free');
-  tile.dataset.tableId=t.id;tile.style.setProperty('--closed-color',validTableColor(t.closed_color));
+  tile.dataset.tableId=t.id;tile.classList.toggle('bulk-selected',bulkSelected.has(t.id));tile.style.setProperty('--closed-color',validTableColor(t.closed_color));
   tile.setAttribute('aria-label',t.name+' · '+(s?'Dolu':'Boş')+' · bilgileri aç');
   const kind=['playstation','computer','billiards'].includes(t.device_type)?t.device_type:'playstation';
   // Sadece süreli açık hesaplar: açılışta ödeme alınmışsa yeşil, alınmamışsa kırmızı nokta.
@@ -213,9 +214,15 @@ function renderDesktop(){
    : '';
   tile.innerHTML=`<span class="desk-tile-status">${s?'● DOLU':'● BOŞ'}</span>${paidMarker}<span class="desk-tile-clock" data-tile-time="${esc(t.id)}">${s?'—':'BOŞ'}</span><span class="desk-tile-art">${tableDeviceArt[kind]}</span><span class="desk-tile-name">${esc(t.name)}</span>`;
   // Tek tık: masayı sol panelde seç. Çift tık: boşsa hesap aç, doluysa ödeme ekranı.
-  tile.addEventListener('click',()=>selectDeskTable(t.id));
+  tile.addEventListener('click',e=>{
+   if(bulkSuppressClick){e.preventDefault();return;}
+   if(e.ctrlKey||e.metaKey||e.shiftKey){e.preventDefault();if(bulkSelected.has(t.id))bulkSelected.delete(t.id);else bulkSelected.add(t.id);updateBulkSelection();return;}
+   if(bulkSelected.size){bulkSelected.clear();updateBulkSelection();}
+   selectDeskTable(t.id);
+  });
   tile.addEventListener('dblclick',async (event)=>{
    event.preventDefault();
+   if(bulkSelected.size||bulkSuppressClick)return;
    selectDeskTable(t.id);
    // Açık bir modalın üstüne başka bir modal açılmasını önle.
    if(document.querySelector('dialog[open]'))return;
@@ -233,6 +240,7 @@ function renderDesktop(){
   fragment.append(tile);
  }
  grid.replaceChildren(fragment);
+ updateBulkSelection();
  if(!ts.length){$('selectedTablePanel').textContent='Henüz masa bulunamadı.';return;}
  if(!ts.some(t=>t.id===selectedTableId))selectedTableId=ts[0].id;
  selectDeskTable(selectedTableId);
@@ -240,9 +248,148 @@ function renderDesktop(){
  setDeskTab(currentDeskTab);
 }
 
+// V34: Windows benzeri çoklu seçim ve toplu oyun hesapları.
+function updateBulkSelection(){
+ const ids=new Set(state.tables.filter(t=>t.active).map(t=>t.id));
+ for(const id of [...bulkSelected])if(!ids.has(id))bulkSelected.delete(id);
+ document.querySelectorAll('#cards .desk-tile').forEach(el=>el.classList.toggle('bulk-selected',bulkSelected.has(el.dataset.tableId)));
+ const selected=state.tables.filter(t=>bulkSelected.has(t.id));
+ const free=selected.filter(t=>!active(t)).length,busy=selected.length-free;
+ $('bulkCount').textContent=`${selected.length} masa seçildi · ${free} boş · ${busy} açık`;
+ $('bulkOpen').disabled=!free||bulkWorking;
+ $('bulkClose').disabled=!busy||bulkWorking;
+}
+$('bulkClear').onclick=()=>{bulkSelected.clear();updateBulkSelection()};
+// Boş alandan sürükleme veya ikonların üzerinden fareyle seçim dikdörtgeni.
+(function initMarquee(){
+ const grid=$('cards');let origin=null,frame=null,oldSelected=null;
+ grid.addEventListener('pointerdown',e=>{
+  if(e.button!==0||e.pointerType==='touch'||document.querySelector('dialog[open]'))return;
+  // Ctrl+tık tekil seçim için mevcut davranışı bırak.
+  if(e.ctrlKey||e.metaKey)return;
+  origin={x:e.clientX,y:e.clientY,id:e.pointerId};oldSelected=new Set(e.shiftKey?bulkSelected:[]);
+ });
+ window.addEventListener('pointermove',e=>{
+  if(!origin||e.pointerId!==origin.id)return;
+  if(!frame&&Math.hypot(e.clientX-origin.x,e.clientY-origin.y)<9)return;
+  if(!frame){frame=document.createElement('div');frame.className='bulk-marquee';document.body.append(frame);document.body.classList.add('bulk-dragging');}
+  const x=Math.min(origin.x,e.clientX),y=Math.min(origin.y,e.clientY),w=Math.abs(e.clientX-origin.x),h=Math.abs(e.clientY-origin.y);
+  Object.assign(frame.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});
+  bulkSelected.clear();for(const id of oldSelected)bulkSelected.add(id);
+  const r={left:x,right:x+w,top:y,bottom:y+h};
+  for(const el of grid.querySelectorAll('.desk-tile')){const b=el.getBoundingClientRect();if(b.left<r.right&&b.right>r.left&&b.top<r.bottom&&b.bottom>r.top)bulkSelected.add(el.dataset.tableId)}
+  updateBulkSelection();
+ });
+ const end=()=>{if(frame){frame.remove();frame=null;bulkSuppressClick=true;setTimeout(()=>bulkSuppressClick=false,120);}
+  origin=null;document.body.classList.remove('bulk-dragging');};
+ window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end);
+})();
+const bulkSelectedTables=()=>state.tables.filter(t=>bulkSelected.has(t.id));
+const bulkRowSession=id=>state.sessions.find(s=>s.table_id===id&&!s.ended_at);
+function renderBulkOpen(){
+ const tables=bulkSelectedTables().filter(t=>!active(t));
+ $('bulkRows').innerHTML=tables.map(t=>`<tr data-bulk-id="${esc(t.id)}"><th scope="row">${esc(t.name)}</th><td><select data-bulk-field="controllers" aria-label="${esc(t.name)} kol sayısı">${[1,2,3,4].map(i=>`<option value="${i}">${i} kol · ${money(rate(t.id,i))}/saat</option>`).join('')}</select></td><td><select data-bulk-field="mode"><option value="unlimited">Süresiz</option><option value="timed">Süreli</option></select></td><td><select data-bulk-field="entryType" disabled><option value="minutes">Dakika</option><option value="amount">Fiyat (₺)</option></select></td><td><input data-bulk-field="entryValue" type="number" min="0.01" step="any" placeholder="Dakika / ₺" disabled></td><td><label class="bulk-paid"><input data-bulk-field="paid" type="checkbox" disabled> Peşin alındı</label><select data-bulk-field="payMethod" disabled><option value="card">Kart</option><option value="cash">Nakit</option></select></td></tr>`).join('');
+ $('bulkRows').querySelectorAll('tr').forEach(tr=>{
+  const mode=tr.querySelector('[data-bulk-field=mode]');const paid=tr.querySelector('[data-bulk-field=paid]');
+  const update=()=>{const timed=mode.value==='timed';for(const key of ['entryType','entryValue','paid'])tr.querySelector(`[data-bulk-field=${key}]`).disabled=!timed;tr.querySelector('[data-bulk-field=payMethod]').disabled=!timed||!paid.checked};
+  mode.addEventListener('change',update);paid.addEventListener('change',update);
+ });
+ $('bulkFooter').innerHTML='';
+}
+function renderBulkClose(){
+ const tables=bulkSelectedTables().filter(t=>active(t));let gross=0,advance=0;
+ $('bulkRows').innerHTML=tables.map(t=>{const s=active(t),r=receiptData(s),upfront=advanceAmount(s.id),balance=Math.max(0,r.total-upfront);gross+=r.total;advance+=upfront;
+  return `<tr data-bulk-id="${esc(t.id)}"><th scope="row">${esc(t.name)}</th><td>${Number(s.controllers)} kol</td><td>${fmtTime(r.seconds)}</td><td>${money(r.game)}</td><td>${money(r.orders)}</td><td>${money(upfront)}</td><td><strong>${money(balance)}</strong><details><summary>Alınan ürünler</summary>${r.items.length?r.items.map(i=>`<div>${esc(i.name)} · ${Number(i.qty)} × ${money(i.price)}</div>`).join(''):'Ürün yok'}</details></td></tr>`}).join('');
+ $('bulkFooter').innerHTML=`<tr><th colspan="5">GENEL TOPLAM <strong>${money(gross)}</strong></th><th>Ön ödeme ${money(advance)}</th><th>TAHSİL EDİLECEK <strong>${money(Math.max(0,gross-advance))}</strong></th></tr>`;
+}
+function showBulk(mode){
+ if(document.querySelector('dialog[open]'))return;
+ bulkMode=mode;
+ const n=bulkSelectedTables().filter(t=>mode==='open'?!active(t):!!active(t)).length;
+ if(!n)return;
+ $('bulkTitle').textContent=mode==='open'?`🎮 ${n} Masaya Toplu Hesap Aç`:`💳 ${n} Masanın Hesabını Kapat`;
+ $('bulkHelp').textContent=mode==='open'?'Her masa için ayrı kol sayısı, süreli/süresiz ve dakika ya da fiyat belirle. Tek ekrandan başlat.':'Her masanın oyun ve ürün tutarı ayrı listelenir. Kapanışta kesin tutar sunucuda yeniden hesaplanır; ödeme seçilen yöntemle ayrı ayrı kaydedilir.';
+ $('bulkPaymentRow').hidden=mode!=='close';
+ $('bulkThead').innerHTML=mode==='open'?'<tr><th>Masa</th><th>Kol</th><th>Hesap türü</th><th>Giriş</th><th>Değer</th><th>Ön ödeme</th></tr>':'<tr><th>Masa</th><th>Kol</th><th>Süre</th><th>Oyun</th><th>Adisyon</th><th>Ön ödeme</th><th>Kalan / Detay</th></tr>';
+ $('bulkResult').textContent='';$('bulkSubmit').disabled=false;
+ $('bulkSubmit').textContent=mode==='open'?'Seçilen Masaları Aç':'Seçilen Hesapları Kapat ve Kaydet';
+ if(mode==='open')renderBulkOpen();else renderBulkClose();
+ $('bulkDialog').showModal();
+}
+$('bulkOpen').onclick=()=>showBulk('open');$('bulkClose').onclick=()=>showBulk('close');
+function closeBulkDialog(){if(!bulkWorking)$('bulkDialog').close()}
+$('bulkCancel').onclick=closeBulkDialog;$('bulkX').onclick=closeBulkDialog;
+$('bulkDialog').addEventListener('cancel',e=>{if(bulkWorking)e.preventDefault()});
+async function runBulkOpen(){
+ const rows=[...$('bulkRows').querySelectorAll('tr[data-bulk-id]')].map(tr=>{
+  const v=key=>tr.querySelector(`[data-bulk-field=${key}]`);
+  return {id:tr.dataset.bulkId,name:state.tables.find(t=>t.id===tr.dataset.bulkId)?.name||'Masa',controllers:Number(v('controllers').value),mode:v('mode').value,entryType:v('entryType').value,value:Number(v('entryValue').value),paid:v('paid').checked,payment:v('payMethod').value};
+ });
+ for(const x of rows){
+  if(rate(x.id,x.controllers)<=0)throw Error(x.name+': Seçili kolun saatlik fiyatını önce Ayarlar bölümünden belirle.');
+  if(x.mode==='timed'&&(!Number.isFinite(x.value)||x.value<=0))throw Error(x.name+': Geçerli dakika veya tutar gir.');
+ }
+ if(!confirm(`${rows.length} farklı masada hesap açılacak. Onaylıyor musun?`))return;
+ let successes=[];const failures=[];
+ for(const x of rows){
+  try{
+   const r=await db.rpc('cafe_open_session',{p_table_id:x.id,p_controllers:x.controllers,p_mode:x.mode,p_entry_type:x.mode==='timed'?x.entryType:null,p_entry_value:x.mode==='timed'?x.value:null});
+   if(r.error)throw r.error;
+   let note='';
+   if(x.paid&&x.mode==='timed'){
+    const a=await db.rpc('cafe_mark_advance_v26',{p_session_id:r.data,p_method:x.payment});
+    if(a.error)note=' (HESAP AÇILDI ancak ön ödeme kaydı başarısız: '+a.error.message+')';
+   }
+   successes.push(x.name+note);bulkSelected.delete(x.id);
+  }catch(e){failures.push(x.name+': '+e.message)}
+  $('bulkResult').textContent=`${successes.length} açıldı · ${failures.length} hata · ${successes.length+failures.length}/${rows.length} tamamlandı`;
+ }
+ await reload(true);
+ return {successes,failures};
+}
+async function runBulkClose(){
+ const tables=bulkSelectedTables().filter(t=>active(t));
+ const method=$('bulkPaymentMethod').value;
+ const estimate=tables.reduce((sum,t)=>{const s=active(t);return sum+Math.max(0,receiptData(s).total-advanceAmount(s.id))},0);
+ if(!confirm(`${tables.length} masanın hesabı kapatılacak. Anlık tahsilat tahmini: ${money(estimate)}. Kesin tutarlar kapanışta hesaplanır. ${method==='card'?'KART':'NAKİT'} olarak kaydedilsin mi?`))return;
+ const successes=[],failures=[];
+ for(const t of tables){
+  const s=active(t);if(!s)continue;
+  try{
+   const close=await db.rpc('cafe_close_session',{p_session_id:s.id});
+   if(close.error)throw close.error;
+   // Kapanıştan sonra kesin ücreti yeniden oku; önizlemeden ödeme alma.
+   const fresh=await db.from('cafe_sessions').select('id,ended_at,final_total_amount,final_game_amount,final_order_amount').eq('id',s.id).single();
+   if(fresh.error)throw fresh.error;
+   if(!fresh.data?.ended_at)throw Error('Kapanış kaydı doğrulanamadı');
+   const total=Number(fresh.data.final_total_amount??(Number(fresh.data.final_game_amount||0)+Number(fresh.data.final_order_amount||0)));
+   if(!Number.isFinite(total)||total<0)throw Error('Kesin hesap tutarı geçersiz');
+   const due=Math.max(0,fromCents(cents(total)-cents(advanceAmount(s.id))));
+   // Yeniden denemede aynı oturuma iki ödeme yazılmaması sunucu RPC kontrolüne dayanır.
+   const payment=await db.rpc('cafe_record_payment_v26',{p_session_id:s.id,p_discount_amount:0,p_cash_amount:method==='cash'?due:0,p_card_amount:method==='card'?due:0});
+   if(payment.error)throw Error('Hesap KAPANDI, ÖDEME kaydedilemedi: '+payment.error.message);
+   successes.push(`${t.name}: ${money(total)} (ön ödeme ${money(advanceAmount(s.id))}, ${method==='card'?'kart':'nakit'} ${money(due)})`);
+   bulkSelected.delete(t.id);
+  }catch(e){failures.push(t.name+': '+e.message)}
+  $('bulkResult').textContent=`${successes.length} kapandı/ödendi · ${failures.length} hata · ${successes.length+failures.length}/${tables.length} işlendi`;
+ }
+ await reload(true);return {successes,failures};
+}
+$('bulkSubmit').addEventListener('click',async()=>{
+ if(bulkWorking)return;bulkWorking=true;
+ const btn=$('bulkSubmit');btn.disabled=true;$('bulkCancel').disabled=true;$('bulkX').disabled=true;
+ try{
+  const r=bulkMode==='open'?await runBulkOpen():await runBulkClose();
+  if(!r)return;
+  $('bulkResult').innerHTML=`<strong>${r.successes.length} başarılı · ${r.failures.length} hata</strong><div>${r.successes.map(x=>`<p class="bulk-ok">✓ ${esc(x)}</p>`).join('')}${r.failures.map(x=>`<p class="bulk-error">✕ ${esc(x)}</p>`).join('')}</div>`;
+  btn.hidden=true;msg(r.failures.length?'Bazı toplu işlemler başarısız oldu. Ayrıntılar pencerede.':'Toplu işlem tamamlandı.',!!r.failures);
+ }catch(e){$('bulkResult').textContent=e.message;msg(e.message,true)}
+ finally{bulkWorking=false;btn.disabled=false;$('bulkCancel').disabled=false;$('bulkX').disabled=false}
+});
+$('bulkDialog').addEventListener('close',()=>{$('bulkSubmit').hidden=false;bulkMode=null;updateBulkSelection()});
 function updateOutstanding(){const live=state.sessions.filter(s=>!s.ended_at);const due=live.reduce((sum,s)=>sum+Math.max(0,gameAmount(s)+productAmount(s.id)-advanceAmount(s.id)),0);$('outstandingAmount').textContent=money(due);$('outstandingCount').textContent=live.length+' açık hesap · anlık tahmin (5 TL dilimi)';}
 function tick(){if($('app').hidden)return;updateOutstanding();for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}updateDesktopTimers();}
-$('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);
+$('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden&&!bulkWorking)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('newTable').onclick=()=>{$('tableForm').reset();$('tableSort').value=state.tables.length?Math.max(...state.tables.map(t=>Number(t.sort_order)||0))+1:1;$('tableId').value='';$('tableColor').value='#84232b';$('tableDevice').value='playstation';for(let i=1;i<=4;i++){$('short'+i).value=0;$('round'+i).value=5;}$('tableTitle').textContent='Yeni Masa Ekle';$('tableDialog').showModal()};
 function editTable(id){const t=state.tables.find(x=>x.id===id);if(!t)return;$('tableId').value=id;$('tableName').value=t.name;$('tableSort').value=Number(t.sort_order)||0;$('tableColor').value=validTableColor(t.closed_color);$('tableDevice').value=t.device_type||'playstation';for(let i=1;i<=4;i++){const tr=tariff(id,i);$('rate'+i).value=rate(id,i);$('short'+i).value=Number(tr.short_fee||0);$('round'+i).value=Number(tr.rounding_step||5);}$('tableTitle').textContent='Masa ve Fiyatları';$('tableDialog').showModal();}
