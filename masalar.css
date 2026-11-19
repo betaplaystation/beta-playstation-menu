@@ -8,3 +8,28 @@
 .order-item{padding:9px 0;border-bottom:1px solid #3f3235}
 .order-item:last-child{border:0}
 .order-item .minirow{margin:3px 0}
+
+/* V3 - kapanis oncesi adisyon ve yazdirilabilir hesap dokumu */
+.receipt-dialog{width:min(96vw,660px);max-height:92%;padding:24px}
+.receipt-head{gap:12px}.receipt-body{background:#111013;border:1px solid #4b3238;border-radius:12px;padding:20px;margin:15px 0}
+.receipt-brand{text-align:center;font-size:22px;font-weight:900;letter-spacing:1px}.receipt-brand span{color:#ee3038}
+.receipt-sub{text-align:center;color:#bcb2b5;border-bottom:1px dashed #6e4b50;padding-bottom:14px;font-size:13px}
+.receipt-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px 18px;margin:15px 0}
+.receipt-meta>div{display:flex;flex-direction:column;gap:4px}.receipt-meta span{color:#aba5a6;font-size:12px}.receipt-meta strong{font-size:14px}
+.receipt-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #32272a;font-size:14px}
+.receipt-line span{min-width:0}.receipt-line strong{white-space:nowrap;font-variant-numeric:tabular-nums}
+.receipt-line small{display:block;color:#a9a0a3}.receipt-body h3{font-size:15px;margin:24px 0 8px}
+.receipt-subtotal{font-weight:700}.receipt-total{font-size:20px;font-weight:850;color:#ff6068;border-bottom:0;border-top:2px solid #b62f39;margin-top:10px}
+.receipt-foot{font-size:11px;text-align:center;color:#b2a8ac;margin-top:24px}.receipt-actions{justify-content:flex-end}
+.historyrow button{padding:7px 10px;font-size:12px}
+@media(max-width:500px){.receipt-meta{grid-template-columns:1fr}.receipt-dialog{padding:12px}.receipt-body{padding:12px}.receipt-total{font-size:17px}}
+@media print{
+ @page{size:80mm auto;margin:4mm}
+ body *{visibility:hidden!important}
+ #receiptDialog,#receiptDialog *{visibility:visible!important}
+ #receiptDialog{position:absolute!important;display:block!important;left:0!important;top:0!important;width:72mm!important;max-height:none!important;border:0!important;background:#fff!important;color:#000!important;overflow:visible!important;padding:0!important;margin:0!important}
+ #receiptDialog .receipt-body{border:0;background:#fff;color:#000;padding:0;margin:0}
+ #receiptDialog .receipt-body *{color:#000!important}
+ #receiptDialog .receipt-head,#receiptDialog .receipt-actions,#receiptWarning{display:none!important}
+ .receipt-line{border-color:#aaa}.receipt-total{border-top:2px solid #000}.receipt-brand span{color:#000}
+}
