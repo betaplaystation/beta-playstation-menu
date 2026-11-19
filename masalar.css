@@ -376,3 +376,73 @@
 .desk-order-row{display:flex;justify-content:space-between;gap:15px;align-items:center;border-bottom:1px solid #3a3137;padding:12px 3px;}
 .desk-order-row>div:last-child{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 @media(max-width:800px){#app .table-workspace{grid-template-columns:1fr;}#selectedTablePanel{position:static;order:2;}#tableIconsArea{order:1;}#cards.cards{grid-template-columns:repeat(auto-fill,minmax(95px,1fr))!important;}#cards .desk-tile{height:122px!important;min-height:122px!important;max-height:122px!important;}}
+
+
+/* V31 — Masa planı simgeleri bağımsız ölçeklenir; isim sabit puntodadır. */
+#cards.cards{
+  --beta-icon-size: 54px;
+  --beta-tile-width: 112px;
+  --beta-tile-height: 137px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--beta-tile-width), var(--beta-tile-width))) !important;
+  justify-content: start;
+  align-content: start;
+  gap: 10px !important;
+}
+#cards .desk-tile{
+  width: var(--beta-tile-width) !important;
+  min-width: var(--beta-tile-width) !important;
+  max-width: var(--beta-tile-width) !important;
+  height: var(--beta-tile-height) !important;
+  min-height: var(--beta-tile-height) !important;
+  max-height: var(--beta-tile-height) !important;
+  padding: 7px 5px 0 !important;
+  gap: 0;
+  overflow: hidden;
+}
+#cards .desk-tile-art {
+  width: var(--beta-icon-size) !important;
+  height: var(--beta-icon-size) !important;
+  max-width: none !important;
+  flex: 0 0 var(--beta-icon-size);
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+}
+#cards .desk-tile-art svg {width:100% !important;height:100% !important;object-fit:contain;}
+#cards .desk-tile-name{
+  width:calc(100% + 10px);
+  margin: 0 -5px;
+  padding: 5px 3px 6px;
+  background:rgba(0,0,0,.4);
+  border-top:1px solid rgba(255,255,255,.14);
+  font-size: 13px !important;
+  font-weight: 900;
+  line-height: 1.16;
+  min-height: 26px;
+  flex-shrink:0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+}
+#cards .desk-tile-clock{font-size:13px !important;line-height:1.15;min-height:17px;}
+#cards .desk-tile-status {font-size:9px !important;line-height:13px;min-height:13px;}
+#cards .desk-prepaid-dot {
+  position:absolute;
+  top:5px;
+  left:6px;
+  width:13px;
+  height:13px;
+  border-radius:50%;
+  border:2px solid #101014;
+  box-shadow:0 0 0 1px rgba(255,255,255,.2);
+  z-index:2;
+}
+#cards .desk-prepaid-dot.paid{background:#29ee80;box-shadow:0 0 0 1px #2bd66f,0 0 8px #29ee8066;}
+#cards .desk-prepaid-dot.unpaid{background:#ff353e;box-shadow:0 0 0 1px #f03945,0 0 8px #ff353e66;}
+@media(max-width:800px){
+  #cards.cards{grid-template-columns:repeat(auto-fill,minmax(var(--beta-tile-width),var(--beta-tile-width))) !important;}
+  #cards .desk-tile{height:var(--beta-tile-height) !important;min-height:var(--beta-tile-height) !important;max-height:var(--beta-tile-height) !important;}
+}
