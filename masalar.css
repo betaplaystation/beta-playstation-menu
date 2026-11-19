@@ -282,3 +282,24 @@
 }
 /* Kucuk ekranlarda da kaydirma cubugu geri gelmesin. */
 @media(max-width:550px){#cards.cards{grid-auto-rows:390px !important;}}
+
+/* V24 — Masa kartlarinda sol etiketleri sagdaki ucret/sure bilgileriyle esit boyuta getir. */
+#cards.cards > .card.card-open .minirow > span,
+#cards.cards > .card.card-open .minirow > strong,
+#cards.cards > .card.card-open .minirow .time,
+#cards.cards > .card.card-open .minirow .amount,
+#cards.cards > .card.card-open .minirow [data-left] {
+  font-size:clamp(11px, .85vw, 16px) !important;
+  line-height:1.12 !important;
+}
+#cards.cards > .card.card-open .minirow > span {
+  font-weight:700 !important;
+  letter-spacing:-.025em;
+}
+#cards.cards > .card.card-open .minirow > strong {
+  font-weight:850 !important;
+}
+#cards.cards > .card.card-open .minirow {
+  min-height:22px !important;
+  margin:3px 0 !important;
+}
