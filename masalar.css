@@ -165,3 +165,16 @@
 /* V15: priorite duzeltmesi, tarihce kaydinin kendi icinde kaymasi */
 #app #recentHistory #history {height:360px !important;max-height:360px !important;min-height:0 !important;overflow-y:auto !important;overflow-x:hidden !important;display:block !important;}
 @media(max-width:600px){#app #recentHistory #history{height:300px !important;max-height:300px !important;}}
+
+/* V16: tahsilat penceresi */
+.payment-dialog{width:min(94vw,610px);max-height:90vh;overflow:auto}
+.payment-dialog .payment-gross{display:flex;justify-content:space-between;gap:12px;background:#231a1d;border:1px solid #653038;border-radius:10px;padding:14px;margin:10px 0 18px;font-weight:700}
+.payment-dialog .payment-gross strong{color:#fff;font-size:21px}
+.payment-summary{background:#141417;padding:14px;border-radius:10px;border:1px solid #3b3238;margin-top:14px}
+.payment-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #3a3438}
+.payment-line:last-child{border-bottom:0}
+.payment-net{font-size:19px;color:#78edab}
+.history-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.payment-history-btn{background:#165b3d;border-color:#2a9e6c;font-size:12px;padding:7px 9px}
+.payment-ok{color:#70e5a0;font-size:12px;font-weight:800}
+@media(max-width:550px){.history-actions{justify-content:flex-start}.payment-dialog .grid2{grid-template-columns:1fr}}

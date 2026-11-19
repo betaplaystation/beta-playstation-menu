@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
-const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],user:null,refreshBusy:false};
+const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],user:null,refreshBusy:false};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -47,11 +47,14 @@ async function reload(silent=false){
   [state.tables,state.rates,state.sessions,state.charges]=r.map(x=>x.data||[]);
   const interesting=state.sessions.filter(s=>!s.ended_at).concat(state.sessions.filter(s=>s.ended_at).slice(0,15));
   const sessionIds=interesting.map(s=>s.id);
-  state.links=[];state.orders=[];state.manualItems=[];state.segments=[];
+  state.links=[];state.orders=[];state.manualItems=[];state.segments=[];state.payments=[];
   if(sessionIds.length){
    const sg=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,started_at').in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000);
    if(sg.error)throw sg.error;
    state.segments=sg.data||[];
+   const payments=await db.from('cafe_payments').select('session_id,gross_amount,discount_amount,cash_amount,card_amount,paid_at').in('session_id',sessionIds).limit(1000);
+   if(payments.error)throw payments.error;
+   state.payments=payments.data||[];
    const manual=await db.from('cafe_manual_items').select('id,session_id,product_id,product_name,qty,unit_price,created_at,voided_at').in('session_id',sessionIds).order('created_at',{ascending:true}).limit(1000);
    if(manual.error)throw manual.error;
    state.manualItems=manual.data||[];
@@ -111,9 +114,9 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
   }
   const secs=Math.max(0,Math.floor((Date.parse(s.ended_at)-Date.parse(s.started_at))/1000));
   const total=Number(s.final_total_amount??(Number(s.final_game_amount||0)+Number(s.final_order_amount||0)));
-  return `<div class="historyrow recent-event recent-close"><div class="recent-info"><strong>🔴 ${name} — HESAP KAPANDI</strong><div>Kapanış: ${when} · Süre: ${Math.ceil(secs/60)} dakika</div><div><b>TOPLAM: ${money(total)}</b></div></div><button class="secondary" type="button" data-receipt-history="${esc(s.id)}">🧾 Rapor / Adisyon</button></div>`;
+  return `<div class="historyrow recent-event recent-close"><div class="recent-info"><strong>🔴 ${name} — HESAP KAPANDI</strong><div>Kapanış: ${when} · Süre: ${Math.ceil(secs/60)} dakika</div><div><b>TOPLAM: ${money(total)}</b></div></div><div class="history-actions"><button class="secondary" type="button" data-receipt-history="${esc(s.id)}">🧾 Rapor / Adisyon</button>${state.payments.some(p=>p.session_id===s.id)?`<span class="payment-ok">✓ Ödendi</span>`:`<button class="payment-history-btn" type="button" data-pay-history="${esc(s.id)}">💳 Ödeme Al</button>`}</div></div>`;
  }).join(''):'<p class="muted">Henüz hesap açılışı veya kapanışı yok.</p>';
- document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));tick();}
+ document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));document.querySelectorAll('[data-pay-history]').forEach(b=>b.onclick=()=>openPayment(b.dataset.payHistory));tick();}
 function tick(){if($('app').hidden)return;for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
@@ -283,10 +286,14 @@ async function showReceipt(id){
  $('receiptWarning').textContent=receiptClosed?'Bu hesap daha önce kapatılmıştır.':'Hesabı Kapat işlemini onaylayana kadar süre saymaya devam eder. Son tutar kapanış anında sunucuda hesaplanır.';
  $('receiptConfirm').hidden=receiptClosed;
  $('receiptCancel').textContent=receiptClosed?'Kapat':'Geri Dön';
+ $('receiptPay').hidden=!receiptClosed;
+ $('receiptPay').textContent=state.payments.some(p=>p.session_id===id)?'✓ Ödeme Kaydedildi':'💳 Ödeme Al';
+ $('receiptPay').disabled=state.payments.some(p=>p.session_id===id);
  $('receiptDialog').showModal();
 }
 $('receiptCancel').onclick=()=>$('receiptDialog').close();
 $('receiptPrint').onclick=()=>window.print();
+$('receiptPay').onclick=()=>{if(receiptSessionId)openPayment(receiptSessionId)};
 $('receiptConfirm').onclick=async()=>{
  if(!receiptSessionId||receiptClosed)return;
  const button=$('receiptConfirm');button.disabled=true;
@@ -301,12 +308,75 @@ $('receiptConfirm').onclick=async()=>{
   receiptClosed=true;receiptSnapshot=receiptData(closed);
   $('receiptTitle').textContent='✅ Hesap Kapatıldı · Adisyon';
   $('receiptBody').innerHTML=receiptHTML(receiptSnapshot);
-  $('receiptWarning').textContent='Hesap kapatıldı. Adisyonu yazdırabilir veya pencereyi kapatabilirsiniz. Ödeme kaydı oluşturulmadı.';
+  $('receiptWarning').textContent='Hesap kapatıldı. Şimdi Nakit / Kart / İskonto bölümünden ödeme kaydedebilirsin.';
+  $('receiptPay').hidden=false;$('receiptPay').disabled=false;$('receiptPay').textContent='💳 Ödeme Al';
   button.hidden=true;$('receiptCancel').textContent='Kapat';
   msg(`${receiptSnapshot.name} hesabı kapatıldı. Toplam ${money(receiptSnapshot.total)}.`);
+  $('receiptDialog').close();openPayment(id);
  }catch(e){msg(e.message,true);$('receiptWarning').textContent='İşlem doğrulanamadı: '+e.message;}
  finally{button.disabled=false}
 };
+
+// V16 - hesap kapandiktan sonra nakit, kart ve iskonto. Server yeniden hesaplar.
+let paymentSessionId=null;
+const cents=n=>Math.round((Number(n)+Number.EPSILON)*100);
+const fromCents=n=>Number((n/100).toFixed(2));
+function currentPaymentSession(){return state.sessions.find(s=>s.id===paymentSessionId&&s.ended_at)}
+function paymentTotal(){const s=currentPaymentSession();return s?Number(s.final_total_amount??(Number(s.final_game_amount||0)+Number(s.final_order_amount||0))):0}
+function discountValue(gross){
+ const n=Number($('payDiscount').value||0);
+ if(!Number.isFinite(n)||n<0)throw Error('İskonto geçersiz.');
+ const val=$('payDiscountType').value==='percent'?Math.round(cents(gross)*n/100):cents(n);
+ if($('payDiscountType').value==='percent'&&n>100)throw Error('İskonto %100 üzerinde olamaz.');
+ if(val>cents(gross))throw Error('İskonto toplam tutarı aşamaz.');
+ return fromCents(val);
+}
+function updatePaymentPreview(){
+ const total=paymentTotal();
+ try{
+  const discount=discountValue(total),net=fromCents(cents(total)-cents(discount));
+  const cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
+  if(!Number.isFinite(cash)||!Number.isFinite(card)||cash<0||card<0)throw Error('Ödeme tutarları geçersiz.');
+  const diff=fromCents(cents(net)-cents(cash)-cents(card));
+  $('paymentSummary').innerHTML=`<div class="payment-line"><span>Hesap tutarı</span><strong>${money(total)}</strong></div><div class="payment-line"><span>İskonto</span><strong>− ${money(discount)}</strong></div><div class="payment-line payment-net"><span>Ödenecek</span><strong>${money(net)}</strong></div><div class="payment-line"><span>Nakit + Kart</span><strong>${money(cash+card)}</strong></div><div class="payment-line"><span>${diff>=0?'Kalan':'Fazla girilen'}</span><strong>${money(Math.abs(diff))}</strong></div>`;
+  $('paymentSave').disabled=diff!==0;
+  $('paymentWarning').textContent=diff===0?'Tutarlar eşleşiyor; ödemeyi kaydedebilirsin.':'Nakit ve kart toplamı ödenecek tutara eşit olmalı.';
+ }catch(e){$('paymentSummary').textContent='Kontrol: '+e.message;$('paymentSave').disabled=true;$('paymentWarning').textContent=e.message}
+}
+async function openPayment(id){
+ await reload(true);
+ const s=state.sessions.find(x=>x.id===id&&x.ended_at);
+ if(!s){msg('Ödeme için önce hesabı kapatmalısın.',true);return;}
+ paymentSessionId=id;
+ const paid=state.payments.find(p=>p.session_id===id);
+ $('paymentTableName').textContent=state.tables.find(t=>t.id===s.table_id)?.name||'Masa';
+ $('paymentGross').textContent=money(paymentTotal());
+ $('paymentForm').reset();$('payDiscountType').value='amount';$('payDiscount').value='0';
+ $('payCash').value=String(paymentTotal().toFixed(2));$('payCard').value='0';
+ const disabled=Boolean(paid);
+ for(const input of $('paymentForm').querySelectorAll('input,select'))input.disabled=disabled;
+ $('paymentSave').hidden=disabled;
+ if(disabled){
+  $('paymentSummary').innerHTML=`<div class="payment-line"><span>İskonto</span><strong>${money(paid.discount_amount)}</strong></div><div class="payment-line"><span>Nakit</span><strong>${money(paid.cash_amount)}</strong></div><div class="payment-line"><span>Kart</span><strong>${money(paid.card_amount)}</strong></div><div class="payment-line payment-net"><span>Tahsil edilen</span><strong>${money(Number(paid.cash_amount)+Number(paid.card_amount))}</strong></div>`;
+  $('paymentWarning').textContent='✓ Bu hesabın ödemesi daha önce kaydedildi. Aynı hesap ikinci kez tahsil edilemez.';
+ }else updatePaymentPreview();
+ $('paymentDialog').showModal();
+}
+for(const id of ['payDiscountType','payDiscount','payCash','payCard'])$(id).addEventListener('input',updatePaymentPreview);
+$('paymentForm').addEventListener('submit',async e=>{
+ e.preventDefault();const button=$('paymentSave');if(button.disabled||!paymentSessionId)return;
+ button.disabled=true;
+ try{
+  const discount=discountValue(paymentTotal()),cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
+  if(![cash,card].every(n=>Number.isFinite(n)&&n>=0))throw Error('Nakit ve kart negatif olamaz.');
+  if(cents(cash)+cents(card)!==cents(paymentTotal())-cents(discount))throw Error('Nakit + Kart toplamı ödenecek tutara eşit olmalı.');
+  const r=await db.rpc('cafe_record_payment_v16',{p_session_id:paymentSessionId,p_discount_amount:discount,p_cash_amount:cash,p_card_amount:card});
+  if(r.error)throw r.error;
+  $('paymentDialog').close();await reload(true);
+  msg('Ödeme kaydedildi: Nakit '+money(cash)+' · Kart '+money(card)+' · İskonto '+money(discount));
+ }catch(err){$('paymentWarning').textContent='Ödeme kaydedilemedi: '+err.message;msg(err.message,true);updatePaymentPreview();}
+ finally{button.disabled=false}
+});
 
 // V7 Rapor ekranı: geçmiş hesaplar ana masa yükleme sınırından bağımsız alınır.
 const reportDate=d=>{const a=new Date(d);return `${a.getFullYear()}-${String(a.getMonth()+1).padStart(2,'0')}-${String(a.getDate()).padStart(2,'0')}`};
