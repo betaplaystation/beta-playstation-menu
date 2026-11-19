@@ -311,3 +311,13 @@
 .tarife-item label{display:block;margin:6px 0 10px;font-size:13px;}
 .tarife-item input{width:100%;box-sizing:border-box;margin-top:5px;}
 @media(max-width:580px){.tarife-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* V26 Masa alt butonlarını okunur yap - kartlar aynı yükseklikte kalır */
+#cards.cards .card .actions{gap:6px!important;grid-template-columns:repeat(2,minmax(0,1fr));}
+#cards.cards .card .actions button{font-size:clamp(11px,.9vw,14px)!important;font-weight:800!important;min-height:32px!important;padding:6px 5px!important;line-height:1.15!important;}
+.recent-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;}
+.outstanding{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px;background:#14281f;border:1px solid #238755;padding:9px 15px;border-radius:12px;color:#d7ffe8;}
+.outstanding small{font-size:12px;color:#a4dfb9}.outstanding strong{font-size:clamp(20px,2vw,30px);color:#68ffa0}.outstanding span{font-size:11px;color:#a4dfb9}
+.advance-row{display:flex;align-items:center;gap:10px;background:#172a22;padding:13px;border-radius:9px;border:1px solid #296d4d}.advance-row input{width:20px;height:20px;margin:0;flex:0 0 auto}
+.paid-state{color:#7ef3a5!important}.partial-state{color:#ffd481!important}.unpaid-state{color:#ff7777!important}.report-hide{font-size:12px;padding:8px 10px;white-space:nowrap}
+@media(max-width:600px){.recent-top{align-items:stretch}.outstanding{width:100%;align-items:flex-start}}

@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
-const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],user:null,refreshBusy:false};
+const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],advances:[],hiddenReports:[],user:null,refreshBusy:false};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -52,11 +52,15 @@ async function reload(silent=false){
   [state.tables,state.rates,state.sessions,state.charges]=r.map(x=>x.data||[]);
   const interesting=state.sessions.filter(s=>!s.ended_at).concat(state.sessions.filter(s=>s.ended_at).slice(0,15));
   const sessionIds=interesting.map(s=>s.id);
-  state.links=[];state.orders=[];state.manualItems=[];state.segments=[];state.payments=[];
+  state.links=[];state.orders=[];state.manualItems=[];state.segments=[];state.payments=[];state.advances=[];
+  const hidden=await db.from('cafe_report_hidden_v26').select('session_id').limit(1000);
+  if(hidden.error)throw hidden.error;state.hiddenReports=(hidden.data||[]).map(x=>x.session_id);
   if(sessionIds.length){
    const sg=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,short_fee,rounding_step,started_at').in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000);
    if(sg.error)throw sg.error;
    state.segments=sg.data||[];
+   const advances=await db.from('cafe_session_advances_v26').select('session_id,amount,method,paid_at').in('session_id',sessionIds);
+   if(advances.error)throw advances.error;state.advances=advances.data||[];
    const payments=await db.from('cafe_payments').select('session_id,gross_amount,discount_amount,cash_amount,card_amount,paid_at').in('session_id',sessionIds).limit(1000);
    if(payments.error)throw payments.error;
    state.payments=payments.data||[];
@@ -80,6 +84,9 @@ async function reload(silent=false){
  }catch(e){msg('Masa veya sipariş verisi alınamadı: '+e.message,true)}
  finally{state.refreshBusy=false}
 }
+const advanceFor=id=>state.advances.find(x=>x.session_id===id);
+const advanceAmount=id=>Number(advanceFor(id)?.amount||0);
+const isReportHidden=id=>state.hiddenReports.includes(id);
 const manualForSession=id=>state.manualItems.filter(i=>i.session_id===id&&!i.voided_at);
 const manualAmount=id=>manualForSession(id).reduce((a,i)=>a+Number(i.unit_price||0)*Number(i.qty||0),0);
 const productAmount=id=>orderAmount(id)+manualAmount(id);
@@ -102,9 +109,9 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
  document.querySelectorAll('[data-void-item]').forEach(b=>b.onclick=()=>voidManual(b.dataset.voidItem));
  // Son işlemler: Hesap açılışı ve kapanışı ayrı satırlar halinde, zaman sırasına göre.
  // Rapor düğmesi yalnızca kapanış işlemlerinde gösterilir.
- const lastEvents=state.sessions.flatMap(s=>{
+ const lastEvents=state.sessions.filter(s=>!isReportHidden(s.id)).flatMap(s=>{
   const events=[{type:'open',at:s.started_at,session:s}];
-  if(s.ended_at)events.push({type:'close',at:s.ended_at,session:s});
+  if(s.ended_at&&!isReportHidden(s.id))events.push({type:'close',at:s.ended_at,session:s});
   return events;
  }).filter(e=>Number.isFinite(Date.parse(e.at)))
    .sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,20);
@@ -121,8 +128,10 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
   const total=Number(s.final_total_amount??(Number(s.final_game_amount||0)+Number(s.final_order_amount||0)));
   return `<div class="historyrow recent-event recent-close"><div class="recent-info"><strong>🔴 ${name} — HESAP KAPANDI</strong><div>Kapanış: ${when} · Süre: ${Math.ceil(secs/60)} dakika</div><div><b>TOPLAM: ${money(total)}</b></div></div><div class="history-actions"><button class="secondary" type="button" data-receipt-history="${esc(s.id)}">🧾 Rapor / Adisyon</button>${state.payments.some(p=>p.session_id===s.id)?`<span class="payment-ok">✓ Ödendi</span>`:`<button class="payment-history-btn" type="button" data-pay-history="${esc(s.id)}">💳 Ödeme Al</button>`}</div></div>`;
  }).join(''):'<p class="muted">Henüz hesap açılışı veya kapanışı yok.</p>';
+ updateOutstanding();
  document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));document.querySelectorAll('[data-pay-history]').forEach(b=>b.onclick=()=>openPayment(b.dataset.payHistory));tick();}
-function tick(){if($('app').hidden)return;for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}}
+function updateOutstanding(){const live=state.sessions.filter(s=>!s.ended_at);const due=live.reduce((sum,s)=>sum+Math.max(0,gameAmount(s)+productAmount(s.id)-advanceAmount(s.id)),0);$('outstandingAmount').textContent=money(due);$('outstandingCount').textContent=live.length+' açık hesap · ön ödeme düşülmüş';}
+function tick(){if($('app').hidden)return;updateOutstanding();for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('newTable').onclick=()=>{$('tableForm').reset();$('tableSort').value=state.tables.length?Math.max(...state.tables.map(t=>Number(t.sort_order)||0))+1:1;$('tableId').value='';$('tableColor').value='#84232b';for(let i=1;i<=4;i++){$('short'+i).value=0;$('round'+i).value=5;}$('tableTitle').textContent='Yeni Masa Ekle';$('tableDialog').showModal()};
@@ -139,10 +148,12 @@ $('tableForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.
  const tariffSave=await db.rpc('cafe_save_tariff_rules_v25',{p_table_id:r.data,p_rules:rules});
  if(tariffSave.error)throw tariffSave.error;
  $('tableDialog').close();await reload();msg('Masa, sıralama ve renk kaydedildi.');}catch(x){msg(x.message,true)}finally{b.disabled=false}});
-let currentTable=null;function openSessionDialog(id){const t=state.tables.find(x=>x.id===id);if(!t||active(t))return;currentTable=t;$('sessionForm').reset();$('mode').value='unlimited';$('sessionTable').value=id;$('sessionTitle').textContent=t.name+' · Hesap Aç';updatePreview();$('sessionDialog').showModal();}
+let currentTable=null;function openSessionDialog(id){const t=state.tables.find(x=>x.id===id);if(!t||active(t))return;currentTable=t;$('sessionForm').reset();$('advancePaid').checked=false;$('advanceMethod').value='card';$('mode').value='unlimited';$('sessionTable').value=id;$('sessionTitle').textContent=t.name+' · Hesap Aç';refreshAdvanceControls();updatePreview();$('sessionDialog').showModal();}
 for(const id of ['controllers','mode','entryType','entryValue'])$(id).addEventListener(id==='entryValue'?'input':'change',updatePreview);
 function updatePreview(){if(!currentTable)return;const n=Number($('controllers').value),hourly=rate(currentTable.id,n),mode=$('mode').value,typ=$('entryType').value,val=Number($('entryValue').value);$('timedFields').hidden=mode==='unlimited';$('valueLabel').firstChild.textContent=typ==='minutes'?'Dakika':'Tutar (TL)';$('entryValue').step=typ==='minutes'?'1':'0.01';$('entryValue').placeholder=typ==='minutes'?'Ör. 80':'Ör. 250';if(mode==='unlimited'){const tr=tariff(currentTable.id,n);$('calculated').textContent=`Saatlik: ${money(hourly)} · Aç/Kapa: ${money(tr.short_fee||0)} · Yuvarlama: ${money(tr.rounding_step||5)}`;return;}if(hourly<=0){$('calculated').textContent='Bu kol için saatlik fiyatı önce masa ayarlarından belirle.';return;}if(!Number.isFinite(val)||val<=0){$('calculated').textContent=`Saatlik ${money(hourly)} · Dakika veya tutar gir.`;return;}const tr=tariff(currentTable.id,n),seconds=typ==='minutes'?val*60:Math.round(val*3600/hourly),amount=typ==='minutes'?roundToStep(Math.max(hourly*val/60,Number(tr.short_fee||0)),Number(tr.rounding_step)||5):val;$('calculated').textContent=`Seçim: ${n} Kol · Süre: ${fmtTime(seconds)} · Sabit oyun ücreti: ${money(amount)}`;}
-$('sessionForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const timed=$('mode').value==='timed',val=timed?Number($('entryValue').value):null;if(timed&&(!Number.isFinite(val)||val<=0))throw Error('Pozitif bir dakika veya tutar gir.');const r=await db.rpc('cafe_open_session',{p_table_id:$('sessionTable').value,p_controllers:Number($('controllers').value),p_mode:$('mode').value,p_entry_type:timed?$('entryType').value:null,p_entry_value:val});if(r.error)throw r.error;$('sessionDialog').close();await reload();msg('Hesap açıldı, süre başladı.');}catch(x){msg(x.message,true)}finally{b.disabled=false}});
+function refreshAdvanceControls(){const timed=$('mode').value==='timed';$('advanceRow').hidden=!timed;$('advanceMethodRow').hidden=!timed||!$('advancePaid').checked;if(!timed)$('advancePaid').checked=false;}
+$('mode').addEventListener('change',refreshAdvanceControls);$('advancePaid').addEventListener('change',refreshAdvanceControls);
+$('sessionForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const timed=$('mode').value==='timed',val=timed?Number($('entryValue').value):null;if(timed&&(!Number.isFinite(val)||val<=0))throw Error('Pozitif bir dakika veya tutar gir.');const r=await db.rpc('cafe_open_session',{p_table_id:$('sessionTable').value,p_controllers:Number($('controllers').value),p_mode:$('mode').value,p_entry_type:timed?$('entryType').value:null,p_entry_value:val});if(r.error)throw r.error;let advanceWarning='';if(timed&&$('advancePaid').checked){const ar=await db.rpc('cafe_mark_advance_v26',{p_session_id:r.data,p_method:$('advanceMethod').value});if(ar.error)advanceWarning='ÖNEMLİ: Hesap açıldı ama ön ödeme kaydı başarısız: '+ar.error.message;}$('sessionDialog').close();await reload();msg(advanceWarning||'Hesap açıldı, süre başladı.',Boolean(advanceWarning));}catch(x){msg(x.message,true)}finally{b.disabled=false}});
 let manualSessionId=null;
 function openManualDialog(id){
  const s=state.sessions.find(x=>x.id===id&&!x.ended_at);if(!s)return;
@@ -278,6 +289,7 @@ const receiptHTML=r=>`<div class="receipt-brand">BETA <span>PLAYSTATION</span></
  <h3>Alınan ürünler</h3>
  ${r.items.length?`<div class="receipt-products">${r.items.map(i=>`<div class="receipt-line"><span>${i.qty} × ${esc(i.name)} ${i.source==='manual'?'<small>• Manuel</small>':''} <small>(${money(i.price)} / adet)</small></span><strong>${money(i.qty*i.price)}</strong></div>`).join('')}</div>`:'<p class="muted">Bu hesapta ürün siparişi bulunmuyor.</p>'}
  <div class="receipt-line receipt-subtotal"><span>Ürün toplamı</span><strong>${money(r.orders)}</strong></div>
+ ${advanceAmount(r.id)>0?`<div class="receipt-line"><span>✓ Açılışta tahsil edildi (${advanceFor(r.id)?.method==='card'?'Kart':'Nakit'})</span><strong>${money(advanceAmount(r.id))}</strong></div>`:''}
  <div class="receipt-line receipt-total"><span>GENEL TOPLAM</span><strong>${money(r.total)}</strong></div>
  <p class="receipt-foot">Bu ekran bir adisyon özetidir, mali fiş değildir. Ödeme kaydı oluşturulmaz.</p>`;
 async function showReceipt(id){
@@ -345,13 +357,14 @@ function discountValue(gross){
  return fromCents(val);
 }
 function updatePaymentPreview(){
- const total=paymentTotal();
+ const total=paymentTotal(),advance=advanceAmount(paymentSessionId);
  try{
-  const discount=discountValue(total),net=fromCents(cents(total)-cents(discount));
+  const discount=discountValue(Math.max(0,total-advance)),net=fromCents(cents(total)-cents(advance)-cents(discount));
   const cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
   if(!Number.isFinite(cash)||!Number.isFinite(card)||cash<0||card<0)throw Error('Ödeme tutarları geçersiz.');
   const diff=fromCents(cents(net)-cents(cash)-cents(card));
-  $('paymentSummary').innerHTML=`<div class="payment-line"><span>Hesap tutarı</span><strong>${money(total)}</strong></div><div class="payment-line"><span>İskonto</span><strong>− ${money(discount)}</strong></div><div class="payment-line payment-net"><span>Ödenecek</span><strong>${money(net)}</strong></div><div class="payment-line"><span>Nakit + Kart</span><strong>${money(cash+card)}</strong></div><div class="payment-line"><span>${diff>=0?'Kalan':'Fazla girilen'}</span><strong>${money(Math.abs(diff))}</strong></div>`;
+  $('paymentAdvance').textContent=money(advance);
+  $('paymentSummary').innerHTML=`<div class="payment-line"><span>Hesap tutarı</span><strong>${money(total)}</strong></div><div class="payment-line"><span>Açılışta alınan</span><strong>− ${money(advance)}</strong></div><div class="payment-line"><span>İskonto</span><strong>− ${money(discount)}</strong></div><div class="payment-line payment-net"><span>Ödenecek</span><strong>${money(net)}</strong></div><div class="payment-line"><span>Nakit + Kart</span><strong>${money(cash+card)}</strong></div><div class="payment-line"><span>${diff>=0?'Kalan':'Fazla girilen'}</span><strong>${money(Math.abs(diff))}</strong></div>`;
   $('paymentSave').disabled=diff!==0;
   $('paymentWarning').textContent=diff===0?'Tutarlar eşleşiyor; ödemeyi kaydedebilirsin.':'Nakit ve kart toplamı ödenecek tutara eşit olmalı.';
  }catch(e){$('paymentSummary').textContent='Kontrol: '+e.message;$('paymentSave').disabled=true;$('paymentWarning').textContent=e.message}
@@ -361,7 +374,7 @@ function fillPendingPayment(id){
  $('paymentTableName').textContent=receiptSnapshot.name;
  $('paymentGross').textContent=money(paymentTotal());
  $('paymentForm').reset();$('payDiscountType').value='amount';$('payDiscount').value='0';
- $('payCash').value='0';$('payCard').value=paymentTotal().toFixed(2);
+ $('payCash').value='0';$('payCard').value=Math.max(0,paymentTotal()-advanceAmount(id)).toFixed(2);
  for(const input of $('paymentForm').querySelectorAll('input,select'))input.disabled=false;
  $('paymentSave').hidden=false;
  $('paymentSave').textContent='✓ Hesabı Kapat ve Ödemeyi Kaydet';
@@ -375,12 +388,12 @@ function fillPayment(id){
  $('paymentTableName').textContent=state.tables.find(t=>t.id===s.table_id)?.name||'Masa';
  $('paymentGross').textContent=money(paymentTotal());
  $('paymentForm').reset();$('payDiscountType').value='amount';$('payDiscount').value='0';
- $('payCash').value=String(paymentTotal().toFixed(2));$('payCard').value='0';
+ $('payCash').value=Math.max(0,paymentTotal()-advanceAmount(id)).toFixed(2);$('payCard').value='0';
  const disabled=Boolean(paid);
  for(const input of $('paymentForm').querySelectorAll('input,select'))input.disabled=disabled;
  $('paymentSave').hidden=disabled;
  if(disabled){
-  $('paymentSummary').innerHTML=`<div class="payment-line"><span>İskonto</span><strong>${money(paid.discount_amount)}</strong></div><div class="payment-line"><span>Nakit</span><strong>${money(paid.cash_amount)}</strong></div><div class="payment-line"><span>Kart</span><strong>${money(paid.card_amount)}</strong></div><div class="payment-line payment-net"><span>Tahsil edilen</span><strong>${money(Number(paid.cash_amount)+Number(paid.card_amount))}</strong></div>`;
+  $('paymentSummary').innerHTML=`<div class="payment-line"><span>Açılışta alınan</span><strong>${money(advanceAmount(id))}</strong></div><div class="payment-line"><span>İskonto</span><strong>${money(paid.discount_amount)}</strong></div><div class="payment-line"><span>Nakit</span><strong>${money(paid.cash_amount)}</strong></div><div class="payment-line"><span>Kart</span><strong>${money(paid.card_amount)}</strong></div><div class="payment-line payment-net"><span>Tahsil edilen</span><strong>${money(Number(paid.cash_amount)+Number(paid.card_amount))}</strong></div>`;
   $('paymentWarning').textContent='✓ Ödeme daha önce kaydedildi. İkinci tahsilat yapılamaz.';
  }else updatePaymentPreview();
 }
@@ -399,14 +412,14 @@ async function savePaymentRecord(){
   const preTotal=paymentTotal();
   const discountType=$('payDiscountType').value;
   const discountInput=$('payDiscount').value;
-  const discount=discountValue(preTotal),cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
+  const upfront=advanceAmount(paymentSessionId),discount=discountValue(Math.max(0,preTotal-upfront)),cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
   if(![cash,card].every(n=>Number.isFinite(n)&&n>=0))throw Error('Nakit ve kart negatif olamaz.');
-  if(cents(cash)+cents(card)!==cents(preTotal)-cents(discount))throw Error('Nakit + Kart toplamı ödenecek tutara eşit olmalı.');
+  if(cents(cash)+cents(card)!==cents(preTotal)-cents(upfront)-cents(discount))throw Error('Nakit + Kart toplamı ödenecek tutara eşit olmalı.');
   const id=paymentSessionId;
   // Aktif masada sadece ödeme ekranı gösterilir. Önce sunucuda kesin kapanış tutarı alınır.
   if(!receiptClosed){
-   const fullCard=cents(cash)===0&&cents(discount)===0&&cents(card)===cents(preTotal);
-   const fullCash=cents(card)===0&&cents(discount)===0&&cents(cash)===cents(preTotal);
+   const fullCard=cents(cash)===0&&cents(discount)===0&&cents(card)===cents(preTotal)-cents(upfront);
+   const fullCash=cents(card)===0&&cents(discount)===0&&cents(cash)===cents(preTotal)-cents(upfront);
    $('paymentWarning').textContent='Hesap kapatılıyor, kesin tutar hesaplanıyor…';
    const ok=await closeReceiptAccount();
    if(!ok)return false;
@@ -416,16 +429,16 @@ async function savePaymentRecord(){
    $('paymentTitle').textContent='💳 Ödeme Al · Hesap Kapandı';
    $('paymentSave').textContent='✓ Ödemeyi Kaydet';
    $('payDiscountType').value=discountType;$('payDiscount').value=discountInput;
-   if(fullCard){$('payCash').value='0';$('payCard').value=actual.toFixed(2)}
-   else if(fullCash){$('payCard').value='0';$('payCash').value=actual.toFixed(2)}
+   if(fullCard){$('payCash').value='0';$('payCard').value=Math.max(0,actual-advanceAmount(id)).toFixed(2)}
+   else if(fullCash){$('payCard').value='0';$('payCash').value=Math.max(0,actual-advanceAmount(id)).toFixed(2)}
    else{$('payCash').value=cash.toFixed(2);$('payCard').value=card.toFixed(2)}
    updatePaymentPreview();
   }
-  const finalDiscount=discountValue(paymentTotal()),finalCash=Number($('payCash').value||0),finalCard=Number($('payCard').value||0);
-  if(cents(finalCash)+cents(finalCard)!==cents(paymentTotal())-cents(finalDiscount)){
+  const finalDiscount=discountValue(Math.max(0,paymentTotal()-advanceAmount(id))),finalCash=Number($('payCash').value||0),finalCard=Number($('payCard').value||0);
+  if(cents(finalCash)+cents(finalCard)!==cents(paymentTotal())-cents(advanceAmount(id))-cents(finalDiscount)){
    throw Error('Kapanıştaki kesin tutar değişti. Nakit / kart değerlerini kontrol edip Ödemeyi Kaydet butonuna tekrar bas. Masa kapandı, ödeme henüz kaydedilmedi.');
   }
-  const r=await db.rpc('cafe_record_payment_v16',{p_session_id:id,p_discount_amount:finalDiscount,p_cash_amount:finalCash,p_card_amount:finalCard});
+  const r=await db.rpc('cafe_record_payment_v26',{p_session_id:id,p_discount_amount:finalDiscount,p_cash_amount:finalCash,p_card_amount:finalCard});
   if(r.error)throw r.error;
   await reload(true);
   fillPayment(id);
@@ -450,7 +463,7 @@ $('receiptDialog').addEventListener('keydown',async e=>{
  e.preventDefault();e.stopPropagation();enterCloseBusy=true;
  try{
   $('payDiscountType').value='amount';$('payDiscount').value='0';
-  $('payCash').value='0';$('payCard').value=paymentTotal().toFixed(2);
+  $('payCash').value='0';$('payCard').value=Math.max(0,paymentTotal()-advanceAmount(id)).toFixed(2);
   updatePaymentPreview();
   await savePaymentRecord();
  }finally{enterCloseBusy=false;}
@@ -485,8 +498,10 @@ async function loadReport(){
    if(!r.data||r.data.length<250)break;
    offset+=250;if(offset>=25000)throw Error('Bu tarih aralığında 25.000’den fazla hesap var. Daha kısa bir tarih aralığı seç.');
   }
-  if(!sessions.length){$('reportStatus').textContent='Seçilen tarih aralığında kapanmış hesap bulunamadı.';return;}
-  const ids=sessions.map(s=>s.id),manual=[],links=[],reportSegments=[];
+  const hiddenReportIds=new Set();let hOffset=0;while(true){const v=await db.from('cafe_report_hidden_v26').select('session_id').range(hOffset,hOffset+999);if(v.error)throw v.error;(v.data||[]).forEach(x=>hiddenReportIds.add(x.session_id));if((v.data||[]).length<1000)break;hOffset+=1000;}
+  const shownSessions=sessions.filter(s=>!hiddenReportIds.has(s.id));
+  if(!shownSessions.length){$('reportStatus').textContent='Seçilen tarih aralığında kapanmış hesap bulunamadı.';return;}
+  const ids=shownSessions.map(s=>s.id),manual=[],links=[],reportSegments=[];
   for(let i=0;i<ids.length;i+=100){
    const slice=ids.slice(i,i+100);
    const sgs=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,short_fee,rounding_step,started_at').in('session_id',slice).order('started_at',{ascending:true}).limit(1000);
@@ -496,12 +511,13 @@ async function loadReport(){
   }
   const orders=new Map(),orderIds=[...new Set(links.map(l=>l.order_id))];
   for(let i=0;i<orderIds.length;i+=100){const r=await db.from('orders').select('id,status,total,order_items(product_name,qty,unit_price)').in('id',orderIds.slice(i,i+100));if(r.error)throw r.error;for(const o of r.data||[])orders.set(o.id,o);}
+  const reportAdvances=new Map(),reportPayments=new Map();for(let i=0;i<ids.length;i+=100){const chunk=ids.slice(i,i+100);const [a,p]=await Promise.all([db.from('cafe_session_advances_v26').select('session_id,amount,method').in('session_id',chunk),db.from('cafe_payments').select('session_id,cash_amount,card_amount,discount_amount').in('session_id',chunk)]);if(a.error)throw a.error;if(p.error)throw p.error;for(const z of a.data||[])reportAdvances.set(z.session_id,z);for(const z of p.data||[])reportPayments.set(z.session_id,z);}
   const mBy=new Map(),lBy=new Map();
   for(const m of manual){if(!mBy.has(m.session_id))mBy.set(m.session_id,[]);mBy.get(m.session_id).push(m)}
   for(const l of links){if(!lBy.has(l.session_id))lBy.set(l.session_id,[]);lBy.get(l.session_id).push(l.order_id)}
-  const summary={count:sessions.length,seconds:0,game:0,qr:0,manual:0,total:0};
+  const summary={count:shownSessions.length,seconds:0,game:0,qr:0,manual:0,total:0};
   const rows=[];
-  for(const s of sessions){
+  for(const s of shownSessions){
    const secs=Math.max(0,Math.floor((new Date(s.ended_at)-new Date(s.started_at))/1000));
    const manualItems=(mBy.get(s.id)||[]).filter(m=>!m.voided_at),qrIds=lBy.get(s.id)||[];
    const qrItems=[];
@@ -514,15 +530,25 @@ async function loadReport(){
    const name=state.tables.find(t=>t.id===s.table_id)?.name||'Silinmiş masa';
    const sSeg=reportSegments.filter(z=>z.session_id===s.id),first=sSeg[0];
    const changes=sSeg.length>1?`<div class="report-group"><b>Tarife değişiklikleri</b>${sSeg.map(z=>`<div>${new Date(z.started_at).toLocaleString('tr-TR')} · ${esc(state.tables.find(t=>t.id===z.table_id)?.name||'Masa')} · ${z.controllers} Kol · ${money(z.hourly_price)}/saat</div>`).join('')}</div>`:'';
-   rows.push(`<tr><td><strong>${esc(name)}</strong><br><small class="report-start">🟢 Açılış: ${new Date(s.started_at).toLocaleString('tr-TR')} · ${Number(first?.controllers||s.controllers)} Kol</small><br><small class="report-end">🔴 Kapanış: ${new Date(s.ended_at).toLocaleString('tr-TR')}</small><br><small>${s.mode==='timed'?'Süreli':'Süresiz'}</small><details class="report-detail"><summary>Alınanları göster</summary>${details('QR siparişleri',qrItems)}${details('Kasa adisyonu',manualItems.map(m=>({name:m.product_name,qty:m.qty,price:m.unit_price})))}${changes}</details></td><td>${minutesLabel(secs)}</td><td>${money(game)}</td><td>${money(qrTotal)}</td><td>${money(manualTotal)}</td><td><strong>${money(total)}</strong></td></tr>`);
+   const advance=reportAdvances.get(s.id),payment=reportPayments.get(s.id);
+   const payStatus=payment?`<small class="paid-state">✓ Ödendi · açılış ${money(advance?.amount||0)} · kapanış ${money(Number(payment.cash_amount)+Number(payment.card_amount)-Number(advance?.amount||0))}</small>`:advance?`<small class="partial-state">◐ Açılışta ${money(advance.amount)} alındı · kalan ödeme bekliyor</small>`:'<small class="unpaid-state">⚠ Tahsilat kaydı yok</small>';
+   rows.push(`<tr><td><strong>${esc(name)}</strong><br><small class="report-start">🟢 Açılış: ${new Date(s.started_at).toLocaleString('tr-TR')} · ${Number(first?.controllers||s.controllers)} Kol</small><br><small class="report-end">🔴 Kapanış: ${new Date(s.ended_at).toLocaleString('tr-TR')}</small><br><small>${s.mode==='timed'?'Süreli':'Süresiz'}</small><details class="report-detail"><summary>Alınanları göster</summary>${details('QR siparişleri',qrItems)}${details('Kasa adisyonu',manualItems.map(m=>({name:m.product_name,qty:m.qty,price:m.unit_price})))}${changes}</details></td><td>${minutesLabel(secs)}</td><td>${money(game)}</td><td>${money(qrTotal)}</td><td>${money(manualTotal)}</td><td><strong>${money(total)}</strong><br>${payStatus}</td><td><button type="button" class="secondary report-hide" data-hide-report="${esc(s.id)}">Rapordan kaldır</button></td></tr>`);
   }
   $('reportRows').innerHTML=rows.join('');
-  $('reportFooter').innerHTML=`<tr><th>GENEL TOPLAM · ${summary.count} hesap</th><th>${Math.ceil(summary.seconds/60)} dk</th><th>${money(summary.game)}</th><th>${money(summary.qr)}</th><th>${money(summary.manual)}</th><th>${money(summary.total)}</th></tr>`;
+  $('reportFooter').innerHTML=`<tr><th>GENEL TOPLAM · ${summary.count} hesap</th><th>${Math.ceil(summary.seconds/60)} dk</th><th>${money(summary.game)}</th><th>${money(summary.qr)}</th><th>${money(summary.manual)}</th><th>${money(summary.total)}</th><th></th></tr>`;
   $('reportSummary').innerHTML=`<div><span>Kapanan hesap</span><strong>${summary.count}</strong></div><div><span>Oyun geliri</span><strong>${money(summary.game)}</strong></div><div><span>QR + Kasa adisyonu</span><strong>${money(summary.qr+summary.manual)}</strong></div><div><span>TOPLAM TUTAR</span><strong>${money(summary.total)}</strong></div>`;
-  $('reportStatus').textContent=`${summary.count} kapanmış hesap listelendi. Detaylar için “Alınanları göster”e tıkla. Tutarlar kapanış kayıtlarına dayanır; tahsilat bilgisi değildir.`;
+  document.querySelectorAll('[data-hide-report]').forEach(b=>b.addEventListener('click',()=>hideReport(b.dataset.hideReport)));
+  $('reportStatus').textContent=`${summary.count} kapanmış hesap listelendi. Tahsil edildi durumları ayrıca gösterilir. “Rapordan kaldır” işlemi kayıtları veritabanından silmez; yalnızca raporda gizler.`;
  }catch(e){$('reportStatus').textContent='Rapor alınamadı: '+e.message;}
  finally{reportLoading=false}
 }
 initReportDates();
 
 init();
+
+// V26: Geri alınabilir rapor gizleme; mali kayıtları ve ödemeleri silmez.
+async function hideReport(id){
+ if(!confirm('Bu hesabı rapor listesinden gizlemek istiyor musun? Ödeme/adisyon kayıtları silinmeyecek, işlem denetim kaydında tutulacaktır.'))return;
+ try{const r=await db.rpc('cafe_hide_report_v26',{p_session_id:id});if(r.error)throw r.error;await reload(true);await loadReport();msg('Kayıt rapor görünümünden kaldırıldı; mali kayıt korunuyor.');}
+ catch(e){msg('Rapor gizlenemedi: '+e.message,true)}
+}
