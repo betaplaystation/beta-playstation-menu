@@ -550,3 +550,52 @@ body.bulk-dragging,body.bulk-dragging *{user-select:none!important}
 .bulk-confirm-actions{display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-top:20px;}
 .bulk-confirm-actions button{font-size:17px;font-weight:800;min-height:50px;padding:12px 20px;}
 @media(max-width:650px){#bulkDialog .bulk-table{font-size:14px}.bulk-confirm-dialog{padding:16px}.bulk-confirm-actions button{flex:1}}
+
+
+/* V37 - Windows uygulamasi gibi sol detay, sag plan + altta sabit istatistik/islem dokusu */
+@media (min-width:901px){
+  #app .table-workspace{display:grid!important;grid-template-columns: minmax(225px,270px) minmax(0,1fr)!important;gap:12px!important;align-items:stretch!important;height:calc(100dvh - 177px)!important;min-height:550px!important;margin:8px 0 0!important;overflow:hidden;}
+  #selectedTablePanel{position:relative!important;top:auto!important;height:100%!important;min-height:0!important;box-sizing:border-box;overflow-y:auto!important;overscroll-behavior:contain;}
+  #app .desktop-right-column{display:flex;flex-direction:column;min-height:0;min-width:0;gap:10px;}
+  #app #tableIconsArea{flex:1 1 0;min-height:160px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;}
+  #app .desktop-bottom-dock{flex:none;min-height:0;display:flex;flex-direction:column;gap:9px;}
+  #app .desktop-bottom-dock .stats{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));margin:0!important;gap:8px!important;}
+  #app .desktop-bottom-dock .stat{padding:9px 14px!important;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;}
+  #app .desktop-bottom-dock .stat b{font-size:23px!important;}
+  #app #recentHistory{margin:0!important;padding:10px 13px!important;min-height:0;max-height:235px;display:flex;flex-direction:column;}
+  #app #recentHistory .recent-top{flex:none;align-items:center;}
+  #app #recentHistory .recent-top h2{font-size:17px;margin:0;}
+  #app #recentHistory > p.muted{font-size:10px;margin:5px 0;flex:none;}
+  #app #recentHistory #history{flex:1 1 auto;height:auto!important;max-height:none!important;min-height:65px!important;overflow-y:auto!important;}
+}
+#app .desktop-status-footer{min-height:31px;border-top:1px solid #4f3039;background:#181318;display:flex;align-items:center;margin:7px 0 0;padding:3px 10px;border-radius:7px;}
+#app .desktop-status-footer #notice{padding:3px!important;margin:0!important;min-height:0!important;font-size:12px;}
+/* Ölçek çubuğu; simge ve kutucuklar birlikte büyür, isim fontu sabit kalır */
+#app .table-size-control{gap:7px;flex-wrap:wrap;}
+#app .scale-range-label{font-size:12px;font-weight:750;color:#ffbbc1;white-space:nowrap;}
+#app #tableScaleRange{width:145px;accent-color:#ed2836;cursor:pointer;min-height:22px;}
+#app #cardSizeDisplay{min-width:52px;font-size:14px;}
+#tableIconsArea #cards.cards{grid-template-columns:repeat(auto-fill,var(--beta-tile-width,112px))!important;grid-auto-rows:var(--beta-tile-height,137px)!important;gap:12px!important;align-content:start!important;justify-content:start!important;}
+#tableIconsArea #cards .desk-tile{width:var(--beta-tile-width,112px)!important;height:var(--beta-tile-height,137px)!important;min-height:var(--beta-tile-height,137px)!important;max-height:var(--beta-tile-height,137px)!important;}
+#tableIconsArea #cards .desk-tile-art{height:var(--beta-icon-size,54px)!important;width:min(calc(var(--beta-icon-size,54px) * 1.4),95%)!important;max-height:none!important;}
+/* Modal pencereleri masaustu ekranina uygun genislikte ac */
+@media(min-width:901px){
+ #receiptDialog.receipt-dialog{width:min(1100px,94vw)!important;max-width:94vw!important;box-sizing:border-box;}
+ #receiptDialog #embeddedPayment{max-width:none;}
+ #receiptDialog #paymentForm{width:100%;max-width:none;}
+ #tableDialog{width:min(1250px,94vw)!important;max-width:94vw!important;box-sizing:border-box;}
+ #sessionDialog{width:min(950px,92vw)!important;max-width:92vw!important;}
+ #manageDialog{width:min(1100px,94vw)!important;max-width:94vw!important;}
+ #bulkDialog{width:min(1450px,95vw)!important;max-width:95vw!important;}
+ #manualDialog,#chargesDialog{width:min(1000px,93vw)!important;max-width:93vw!important;}
+}
+@media(max-width:900px){
+ #app .table-workspace{display:flex!important;flex-direction:column;height:auto!important;overflow:visible!important;}
+ #app .desktop-right-column{display:contents;}
+ #selectedTablePanel{order:1!important;position:static!important;}
+ #tableIconsArea{order:2!important;overflow-x:auto;}
+ #app .desktop-bottom-dock{order:3!important;display:flex;flex-direction:column;gap:10px;}
+ #app .desktop-bottom-dock .stats{margin:0!important;}
+ #app .desktop-bottom-dock #recentHistory{margin:0!important;}
+ #app #tableScaleRange{width:110px;}
+}
