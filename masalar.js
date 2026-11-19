@@ -11,22 +11,27 @@ const elapsed=s=>Math.max(0,Math.floor((Date.now()-new Date(s.started_at).getTim
 const active=t=>state.sessions.find(s=>s.table_id===t.id&&!s.ended_at);
 const validTableColor=c=>/^#[0-9a-fA-F]{6}$/.test(String(c||""))?c:"#84232b";
 const rate=(id,n)=>Number(state.rates.find(r=>r.table_id===id&&r.controllers===Number(n))?.hourly_price||0);
+const tariff=(id,n)=>state.rates.find(r=>r.table_id===id&&r.controllers===Number(n))||{};
+const roundToStep=(n,step)=>{const v=Number(step)||5;return Math.ceil((Math.max(0,Number(n)||0)-1e-9)/v)*v};
 // Oyun hesabı: geçen süreyi üst tam dakikaya, oyun ücretini üst 5 TL'ye tamamla.
 // Süreli hesapta fiyat doğrudan girildiyse kullanıcının belirlediği sabit tutara dokunma.
 const roundUpFive=n=>Math.ceil((Number(n)-1e-9)/5)*5;
 const gameAmount=s=>{
  if(s.ended_at)return Number(s.final_game_amount||0);
  if(s.mode==='timed'&&!s.pricing_modified)return Number(s.agreed_price||0);
- const start=Date.parse(s.started_at),end=s.mode==='timed'?start+Number(s.planned_seconds||0)*1000:start+Math.ceil(Math.max(0,Date.now()-start)/60000)*60000;
+ const start=Date.parse(s.started_at);
+ const end=s.mode==='timed'?start+Number(s.planned_seconds||0)*1000:start+Math.ceil(Math.max(0,Date.now()-start)/60000)*60000;
  const segs=state.segments.filter(x=>x.session_id===s.id).sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at));
- if(!segs.length)return s.mode==='timed'?Number(s.agreed_price||0):roundUpFive(Number(s.hourly_price)*Math.ceil(elapsed(s)/60)/60);
+ if(!segs.length)return roundToStep(Math.max(Number(s.hourly_price)*Math.ceil(elapsed(s)/60)/60,0),5);
  let total=Number(s.pricing_adjustment||0);
  for(let i=0;i<segs.length;i++){
   const from=Math.max(start,Date.parse(segs[i].started_at));
   const to=Math.min(end,i+1<segs.length?Date.parse(segs[i+1].started_at):end);
   if(to>from)total+=(to-from)*Number(segs[i].hourly_price)/3600000;
  }
- return roundUpFive(Math.max(0,total));
+ const first=segs[0],last=segs[segs.length-1];
+ const minPrice=Number(first.short_fee||0);
+ return roundToStep(Math.max(0,total,minPrice),Number(last.rounding_step)||5);
 };
 function setAuth(on){$('login').hidden=on;$('app').hidden=!on;$('logout').hidden=!on;}
 async function requireAuthorized(){const {data:{user},error}=await db.auth.getUser();if(error)throw error;if(!user)return false;const a=await db.from('admin_users').select('user_id').eq('user_id',user.id).maybeSingle();if(a.error)throw a.error;state.user=a.data?user:null;return Boolean(a.data)}
@@ -49,7 +54,7 @@ async function reload(silent=false){
   const sessionIds=interesting.map(s=>s.id);
   state.links=[];state.orders=[];state.manualItems=[];state.segments=[];state.payments=[];
   if(sessionIds.length){
-   const sg=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,started_at').in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000);
+   const sg=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,short_fee,rounding_step,started_at').in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000);
    if(sg.error)throw sg.error;
    state.segments=sg.data||[];
    const payments=await db.from('cafe_payments').select('session_id,gross_amount,discount_amount,cash_amount,card_amount,paid_at').in('session_id',sessionIds).limit(1000);
@@ -120,8 +125,8 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
 function tick(){if($('app').hidden)return;for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
-$('newTable').onclick=()=>{$('tableForm').reset();$('tableSort').value=state.tables.length?Math.max(...state.tables.map(t=>Number(t.sort_order)||0))+1:1;$('tableId').value='';$('tableColor').value='#84232b';$('tableTitle').textContent='Yeni Masa Ekle';$('tableDialog').showModal()};
-function editTable(id){const t=state.tables.find(x=>x.id===id);if(!t)return;$('tableId').value=id;$('tableName').value=t.name;$('tableSort').value=Number(t.sort_order)||0;$('tableColor').value=validTableColor(t.closed_color);for(let i=1;i<=4;i++)$('rate'+i).value=rate(id,i);$('tableTitle').textContent='Masa ve Fiyatları';$('tableDialog').showModal();}
+$('newTable').onclick=()=>{$('tableForm').reset();$('tableSort').value=state.tables.length?Math.max(...state.tables.map(t=>Number(t.sort_order)||0))+1:1;$('tableId').value='';$('tableColor').value='#84232b';for(let i=1;i<=4;i++){$('short'+i).value=0;$('round'+i).value=5;}$('tableTitle').textContent='Yeni Masa Ekle';$('tableDialog').showModal()};
+function editTable(id){const t=state.tables.find(x=>x.id===id);if(!t)return;$('tableId').value=id;$('tableName').value=t.name;$('tableSort').value=Number(t.sort_order)||0;$('tableColor').value=validTableColor(t.closed_color);for(let i=1;i<=4;i++){const tr=tariff(id,i);$('rate'+i).value=rate(id,i);$('short'+i).value=Number(tr.short_fee||0);$('round'+i).value=Number(tr.rounding_step||5);}$('tableTitle').textContent='Masa ve Fiyatları';$('tableDialog').showModal();}
 $('tableForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const name=$('tableName').value.trim(),prices=[1,2,3,4].map(i=>Number($('rate'+i).value));if(!name||prices.some(v=>!Number.isFinite(v)||v<0))throw Error('İsim ve fiyatlar geçerli olmalı');const r=await db.rpc('cafe_save_table',{p_id:$('tableId').value||null,p_name:name,p_prices:prices});if(r.error)throw r.error;
  const sort=Number($('tableSort').value);
  if(!Number.isInteger(sort)||sort<0||sort>999999)throw Error('Masa sırası 0–999999 arasında tam sayı olmalı.');
@@ -129,10 +134,14 @@ $('tableForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.
  if(orderSave.error)throw orderSave.error;
  const colorSave=await db.rpc('cafe_set_table_color',{p_table_id:r.data,p_closed_color:$('tableColor').value});
  if(colorSave.error)throw colorSave.error;
+ const rules=[1,2,3,4].map(i=>({controllers:i,short_fee:Number($('short'+i).value),rounding_step:Number($('round'+i).value)}));
+ if(rules.some(x=>!Number.isFinite(x.short_fee)||x.short_fee<0||!Number.isFinite(x.rounding_step)||x.rounding_step<=0))throw Error('Aç/Kapa ve yuvarlama değerlerini kontrol edin.');
+ const tariffSave=await db.rpc('cafe_save_tariff_rules_v25',{p_table_id:r.data,p_rules:rules});
+ if(tariffSave.error)throw tariffSave.error;
  $('tableDialog').close();await reload();msg('Masa, sıralama ve renk kaydedildi.');}catch(x){msg(x.message,true)}finally{b.disabled=false}});
 let currentTable=null;function openSessionDialog(id){const t=state.tables.find(x=>x.id===id);if(!t||active(t))return;currentTable=t;$('sessionForm').reset();$('mode').value='unlimited';$('sessionTable').value=id;$('sessionTitle').textContent=t.name+' · Hesap Aç';updatePreview();$('sessionDialog').showModal();}
 for(const id of ['controllers','mode','entryType','entryValue'])$(id).addEventListener(id==='entryValue'?'input':'change',updatePreview);
-function updatePreview(){if(!currentTable)return;const n=Number($('controllers').value),hourly=rate(currentTable.id,n),mode=$('mode').value,typ=$('entryType').value,val=Number($('entryValue').value);$('timedFields').hidden=mode==='unlimited';$('valueLabel').firstChild.textContent=typ==='minutes'?'Dakika':'Tutar (TL)';$('entryValue').step=typ==='minutes'?'1':'0.01';$('entryValue').placeholder=typ==='minutes'?'Ör. 80':'Ör. 250';if(mode==='unlimited'){$('calculated').textContent=`Saatlik: ${money(hourly)} · Süre otomatik sayılacak.`;return;}if(hourly<=0){$('calculated').textContent='Bu kol için saatlik fiyatı önce masa ayarlarından belirle.';return;}if(!Number.isFinite(val)||val<=0){$('calculated').textContent=`Saatlik ${money(hourly)} · Dakika veya tutar gir.`;return;}const seconds=typ==='minutes'?val*60:Math.round(val*3600/hourly),amount=typ==='minutes'?roundUpFive(hourly*val/60):val;$('calculated').textContent=`Seçim: ${n} Kol · Süre: ${fmtTime(seconds)} · Sabit oyun ücreti: ${money(amount)}`;}
+function updatePreview(){if(!currentTable)return;const n=Number($('controllers').value),hourly=rate(currentTable.id,n),mode=$('mode').value,typ=$('entryType').value,val=Number($('entryValue').value);$('timedFields').hidden=mode==='unlimited';$('valueLabel').firstChild.textContent=typ==='minutes'?'Dakika':'Tutar (TL)';$('entryValue').step=typ==='minutes'?'1':'0.01';$('entryValue').placeholder=typ==='minutes'?'Ör. 80':'Ör. 250';if(mode==='unlimited'){const tr=tariff(currentTable.id,n);$('calculated').textContent=`Saatlik: ${money(hourly)} · Aç/Kapa: ${money(tr.short_fee||0)} · Yuvarlama: ${money(tr.rounding_step||5)}`;return;}if(hourly<=0){$('calculated').textContent='Bu kol için saatlik fiyatı önce masa ayarlarından belirle.';return;}if(!Number.isFinite(val)||val<=0){$('calculated').textContent=`Saatlik ${money(hourly)} · Dakika veya tutar gir.`;return;}const tr=tariff(currentTable.id,n),seconds=typ==='minutes'?val*60:Math.round(val*3600/hourly),amount=typ==='minutes'?roundToStep(Math.max(hourly*val/60,Number(tr.short_fee||0)),Number(tr.rounding_step)||5):val;$('calculated').textContent=`Seçim: ${n} Kol · Süre: ${fmtTime(seconds)} · Sabit oyun ücreti: ${money(amount)}`;}
 $('sessionForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const timed=$('mode').value==='timed',val=timed?Number($('entryValue').value):null;if(timed&&(!Number.isFinite(val)||val<=0))throw Error('Pozitif bir dakika veya tutar gir.');const r=await db.rpc('cafe_open_session',{p_table_id:$('sessionTable').value,p_controllers:Number($('controllers').value),p_mode:$('mode').value,p_entry_type:timed?$('entryType').value:null,p_entry_value:val});if(r.error)throw r.error;$('sessionDialog').close();await reload();msg('Hesap açıldı, süre başladı.');}catch(x){msg(x.message,true)}finally{b.disabled=false}});
 let manualSessionId=null;
 function openManualDialog(id){
@@ -480,7 +489,7 @@ async function loadReport(){
   const ids=sessions.map(s=>s.id),manual=[],links=[],reportSegments=[];
   for(let i=0;i<ids.length;i+=100){
    const slice=ids.slice(i,i+100);
-   const sgs=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,started_at').in('session_id',slice).order('started_at',{ascending:true}).limit(1000);
+   const sgs=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,short_fee,rounding_step,started_at').in('session_id',slice).order('started_at',{ascending:true}).limit(1000);
    if(sgs.error)throw sgs.error;reportSegments.push(...(sgs.data||[]));
    let start=0;while(true){const r=await db.from('cafe_manual_items').select('session_id,product_name,qty,unit_price,voided_at').in('session_id',slice).range(start,start+999);if(r.error)throw r.error;manual.push(...(r.data||[]));if((r.data||[]).length<1000)break;start+=1000;}
    start=0;while(true){const r=await db.from('cafe_session_orders').select('session_id,order_id').in('session_id',slice).range(start,start+999);if(r.error)throw r.error;links.push(...(r.data||[]));if((r.data||[]).length<1000)break;start+=1000;}
