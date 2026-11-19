@@ -92,12 +92,27 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
  document.querySelectorAll('[data-open-table]').forEach(b=>b.onclick=()=>openSessionDialog(b.dataset.openTable));document.querySelectorAll('[data-edit-table]').forEach(b=>b.onclick=()=>editTable(b.dataset.editTable));document.querySelectorAll('[data-add-manual]').forEach(b=>b.onclick=()=>openManualDialog(b.dataset.addManual));document.querySelectorAll('[data-close-session]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.closeSession));
  document.querySelectorAll('[data-manage-session]').forEach(b=>b.onclick=()=>openManageSession(b.dataset.manageSession));
  document.querySelectorAll('[data-void-item]').forEach(b=>b.onclick=()=>voidManual(b.dataset.voidItem));
- const closed=state.sessions.filter(s=>s.ended_at).slice(0,15);
- $('history').innerHTML=closed.length?closed.map(s=>{
- const original=state.segments.filter(z=>z.session_id===s.id).sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at))[0];
- const secs=Math.max(0,Math.floor((Date.parse(s.ended_at)-Date.parse(s.started_at))/1000));
- return `<div class="historyrow history-v10"><div class="history-start"><strong>${esc(state.tables.find(t=>t.id===s.table_id)?.name||'Masa')}</strong><div>🟢 AÇILIŞ · ${new Date(s.started_at).toLocaleString('tr-TR')}</div><div>🎮 ${Number(original?.controllers||s.controllers)} Kol ile açıldı</div></div><div class="history-end"><div>🔴 KAPANIŞ · ${new Date(s.ended_at).toLocaleString('tr-TR')}</div><div>⏱️ Süre: ${Math.ceil(secs/60)} dakika · ${fmtTime(secs)}</div><div>Oyun: ${money(s.final_game_amount)} · Adisyon: ${money(s.final_order_amount||0)}</div><strong>TOPLAM: ${money(s.final_total_amount??s.final_game_amount)}</strong></div><button class="secondary" type="button" data-receipt-history="${s.id}">🧾 Rapor / Adisyon</button></div>`;
- }).join(''):'<p class="muted">Henüz kapatılmış hesap yok.</p>';
+ // Son işlemler: Hesap açılışı ve kapanışı ayrı satırlar halinde, zaman sırasına göre.
+ // Rapor düğmesi yalnızca kapanış işlemlerinde gösterilir.
+ const lastEvents=state.sessions.flatMap(s=>{
+  const events=[{type:'open',at:s.started_at,session:s}];
+  if(s.ended_at)events.push({type:'close',at:s.ended_at,session:s});
+  return events;
+ }).filter(e=>Number.isFinite(Date.parse(e.at)))
+   .sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)).slice(0,20);
+ $('history').innerHTML=lastEvents.length?lastEvents.map(e=>{
+  const s=e.session;
+  const initial=state.segments.filter(z=>z.session_id===s.id)
+   .sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at))[0];
+  const name=esc(state.tables.find(t=>t.id===s.table_id)?.name||'Masa');
+  const when=new Date(e.at).toLocaleString('tr-TR');
+  if(e.type==='open'){
+   return `<div class="historyrow recent-event recent-open"><div class="recent-info"><strong>🟢 ${name} — HESAP AÇILDI</strong><div>Açılış: ${when}</div><div>🎮 ${Number(initial?.controllers||s.controllers)||1} kol ile açıldı</div></div></div>`;
+  }
+  const secs=Math.max(0,Math.floor((Date.parse(s.ended_at)-Date.parse(s.started_at))/1000));
+  const total=Number(s.final_total_amount??(Number(s.final_game_amount||0)+Number(s.final_order_amount||0)));
+  return `<div class="historyrow recent-event recent-close"><div class="recent-info"><strong>🔴 ${name} — HESAP KAPANDI</strong><div>Kapanış: ${when} · Süre: ${Math.ceil(secs/60)} dakika</div><div><b>TOPLAM: ${money(total)}</b></div></div><button class="secondary" type="button" data-receipt-history="${esc(s.id)}">🧾 Rapor / Adisyon</button></div>`;
+ }).join(''):'<p class="muted">Henüz hesap açılışı veya kapanışı yok.</p>';
  document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));tick();}
 function tick(){if($('app').hidden)return;for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden)reload(true)},15000);

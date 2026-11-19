@@ -102,3 +102,12 @@
 .history-end strong{font-size:16px}
 .report-start{color:#64d992!important}.report-end{color:#ff757b!important}
 @media(max-width:760px){.history-v10{grid-template-columns:1fr}.history-v10 button{justify-self:start}}
+
+/* V11 - Açılış ve kapanış hareketlerinin ayrı, okunabilir gösterimi */
+#history .recent-event{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:72px;padding:13px 10px;}
+#history .recent-info{min-width:0;line-height:1.65;font-size:14px;}
+#history .recent-info strong{font-size:15px;}
+#history .recent-open{color:#75e6a4;border-left:3px solid #3fb66b;padding-left:13px;}
+#history .recent-close{color:#ff787c;border-left:3px solid #e63c44;padding-left:13px;}
+#history .recent-close button{color:#fff;flex:none;white-space:nowrap;}
+@media(max-width:600px){#history .recent-event{align-items:flex-start;flex-wrap:wrap;}#history .recent-close button{width:100%;}}
