@@ -1,0 +1,27 @@
+/* V53 UI layer. Place after V52 CSS. */
+#selectedTablePanel .hs-side-extras{display:grid;gap:7px;margin:12px 0;border-top:1px solid #514249;padding-top:10px}
+#selectedTablePanel .hs-side-extras button{width:100%;min-height:33px;text-align:center;background:#312831;border:1px solid #71515b;color:#fff}
+#tableContextMenu .hs-context-extra{display:grid;gap:2px;border-bottom:1px solid #59434b;padding-bottom:6px;margin-bottom:6px}
+#tableContextMenu [hidden]{display:none!important}
+#tableContextMenu button{display:block;width:100%;text-align:left;white-space:nowrap}
+.hs-account-dialog{color:#f6f5f6;background:#171419;border:1px solid #8b3945;border-radius:9px;width:min(780px,95vw);max-height:88vh;padding:18px;box-shadow:0 20px 80px #000a}
+.hs-account-dialog::backdrop{background:#000b}
+.hs-summary-head,.hs-summary-footer{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.hs-summary-head{border-bottom:2px solid #d92338;padding-bottom:12px;margin-bottom:16px}
+.hs-summary-head h2{margin:0;font-size:22px;color:#fff}
+.hs-summary-head button{background:transparent;border:1px solid #6e535b;color:#fff;border-radius:6px;padding:5px 10px}
+.hs-summary-layout{display:grid;grid-template-columns: minmax(210px,1fr) minmax(240px,1.2fr);gap:18px}
+.hs-summary-fields{display:flex;flex-direction:column;gap:7px}
+.hs-summary-pair{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 8px;background:#251e25;border-radius:4px}
+.hs-summary-pair strong{font-variant-numeric:tabular-nums;text-align:right}
+.hs-summary-pair.hs-sum-total{background:#772834;color:#fff;font-weight:800;font-size:16px;padding:12px 8px}
+.hs-summary-fields small{color:#bcaab2}
+.hs-summary-adisyon h3{font-size:14px;margin:0 0 9px;color:#fff}
+.hs-summary-scroll{border:1px solid #60424b;border-radius:5px;min-height:170px;max-height:245px;overflow:auto;margin-bottom:12px}
+.hs-summary-scroll table{width:100%;border-collapse:collapse;font-size:13px}
+.hs-summary-scroll th,.hs-summary-scroll td{padding:9px;border-bottom:1px solid #3b3037;text-align:left}
+.hs-summary-scroll th{position:sticky;top:0;background:#3a2530}
+.hs-summary-adisyon p{padding:12px;min-height:72px;border:1px solid #60424b;border-radius:5px;color:#c9bac1;font-size:13px}
+.hs-summary-footer{justify-content:flex-end;padding-top:14px}
+.hs-summary-footer button{background:#c91f36;color:#fff;border:0;border-radius:5px;padding:9px 25px;font-weight:700}
+@media(max-width:590px){.hs-summary-layout{grid-template-columns:1fr}.hs-account-dialog{padding:12px}}
