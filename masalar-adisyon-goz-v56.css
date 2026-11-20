@@ -1,0 +1,8 @@
+.beta-eye-item-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.beta-eye-item strong{flex-shrink:0}
+.beta-eye-remove{flex-shrink:0;background:#7f2638;color:white;border:1px solid #c85a6e;border-radius:6px;padding:7px 12px;cursor:pointer;font-size:12px;font-weight:700}
+.beta-eye-remove:hover{background:#b21e3d}
+.beta-eye-remove:disabled{opacity:.5;cursor:wait}
+.beta-eye-bottom{gap:10px;justify-content:space-between;flex-wrap:wrap}
+.beta-eye-add{background:#bf243f;color:white;border:1px solid #da536c;border-radius:7px;padding:10px 14px;cursor:pointer;font-weight:700}
+.beta-eye-add:hover{background:#e02b4d}
