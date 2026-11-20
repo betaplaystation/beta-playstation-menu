@@ -1,0 +1,41 @@
+/* Beta Playstation QR karşılama ekranı — yalnızca index.html'de kullanılır. */
+#betaQrWelcome[hidden] { display: none !important; }
+#betaQrWelcome {
+  position: fixed; inset: 0; z-index: 2147483000;
+  display: flex; justify-content: center; align-items: center;
+  padding: 24px; overflow: auto;
+  background: radial-gradient(ellipse at 50% 0%, #351019 0%, #130d12 55%, #08090c 100%);
+  color: #fff; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+#betaQrWelcome *, #betaQrWelcome *::before, #betaQrWelcome *::after { box-sizing: border-box; }
+#betaQrWelcome .beta-qr-box { width: min(100%, 490px); text-align: center; }
+#betaQrWelcome .beta-qr-mark {
+  margin: 0 auto 18px; width: 84px; height: 84px; border-radius: 24px;
+  background: linear-gradient(135deg,#f72b3c,#9e0f20);
+  display: grid; place-items: center; font-size: 45px;
+  box-shadow: 0 12px 40px #e3213c40;
+}
+#betaQrWelcome h1 { color: #fff; font-size: clamp(25px,5vw,34px); line-height: 1.2; margin: 0 0 5px; font-weight: 850; }
+#betaQrWelcome h1 em { font-style: normal; color: #ff3548; }
+#betaQrWelcome .beta-qr-subtitle { margin: 0 0 26px; color: #c7b8be; font-size: 14px; letter-spacing: 2px; font-weight: 700; }
+#betaQrWelcome .beta-qr-links { display: grid; gap: 12px; }
+#betaQrWelcome .beta-qr-link {
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: 72px; width: 100%; padding: 15px 20px;
+  border: 1px solid #62303a; border-radius: 16px; background: #19151b;
+  color: #fff; text-decoration: none; text-align: left; cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+  font: 700 17px system-ui, sans-serif;
+}
+#betaQrWelcome .beta-qr-link:not([aria-disabled='true']):hover { transform: translateY(-2px); border-color: #ed3045; background: #2b1820; }
+#betaQrWelcome .beta-qr-link:focus-visible { outline: 3px solid #ff5267; outline-offset: 3px; }
+#betaQrWelcome .beta-qr-link--menu { background: linear-gradient(110deg,#e42038,#a90c25); border-color: #ee3349; }
+#betaQrWelcome .beta-qr-link--menu:hover { background: linear-gradient(110deg,#fa2a44,#bc1531) !important; }
+#betaQrWelcome .beta-qr-link[aria-disabled='true'] { opacity: .55; cursor: not-allowed; }
+#betaQrWelcome .beta-qr-item { display: flex; align-items: center; gap: 13px; }
+#betaQrWelcome .beta-qr-emoji { font-size: 26px; min-width: 30px; text-align: center; }
+#betaQrWelcome .beta-qr-arrow { color: #ff9aa7; font-size: 22px; }
+#betaQrWelcome .beta-qr-note { color: #b6a3ac; font-size: 12px; line-height: 1.5; margin-top: 23px; }
+#betaQrWelcome .beta-qr-message { margin-top: 12px; font-size: 13px; min-height: 18px; color: #ffacb7; }
+@media (max-width: 400px) { #betaQrWelcome { padding: 16px; } #betaQrWelcome .beta-qr-link { padding: 13px 15px; min-height: 66px; } }
+@media (prefers-reduced-motion: reduce) { #betaQrWelcome .beta-qr-link { transition: none; } }
