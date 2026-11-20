@@ -1,0 +1,13 @@
+/* Beta Playstation V57 - Kismi odeme penceresi */
+.partial-pay-v57{width:min(470px,calc(100vw - 24px));max-height:min(85vh,760px);padding:22px;border:1px solid #883046;border-radius:14px;background:#191419;color:#fff;box-shadow:0 18px 60px #0009}
+.partial-pay-v57::backdrop{background:#000b}
+.partial-pay-v57 form{display:grid;gap:14px}
+.partial-pay-v57 .modalhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.partial-pay-v57 .modalhead h2{margin:0;font-size:19px}
+.partial-pay-v57 .partial-pay-values{display:grid;gap:8px;border:1px solid #5b3745;background:#261d23;padding:12px;border-radius:8px}
+.partial-pay-v57 .partial-pay-values>div{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.partial-pay-v57 .partial-pay-values strong{font-variant-numeric:tabular-nums}
+.partial-pay-v57 label{display:grid;gap:6px;font-size:13px}
+.partial-pay-v57 input,.partial-pay-v57 select{width:100%;box-sizing:border-box;padding:11px;border-radius:8px;border:1px solid #74515c;background:#241e24;color:#fff;font-size:15px}
+.partial-pay-v57 .row.end{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.partial-pay-v57 .muted{font-size:12px;line-height:1.5}

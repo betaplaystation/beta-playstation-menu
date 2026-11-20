@@ -4,7 +4,7 @@ const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 let selectedTableId=null, currentDeskTab="tables";
 const bulkSelected=new Set();let bulkMode=null,bulkWorking=false,bulkSuppressClick=false;
-const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],advances:[],hiddenReports:[],restoreEvents:[],user:null,refreshBusy:false};
+const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],advances:[],partials:[],hiddenReports:[],restoreEvents:[],user:null,refreshBusy:false};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -54,7 +54,7 @@ async function reload(silent=false){
   [state.tables,state.rates,state.sessions,state.charges]=r.map(x=>x.data||[]);
   const interesting=state.sessions.filter(s=>!s.ended_at).concat(state.sessions.filter(s=>s.ended_at).slice(0,15));
   const sessionIds=[...new Set(interesting.map(s=>s.id))];
-  state.links=[];state.orders=[];state.manualItems=[];state.segments=[];state.payments=[];state.advances=[];
+  state.links=[];state.orders=[];state.manualItems=[];state.segments=[];state.payments=[];state.advances=[];state.partials=[];
   const hidden=await db.from('cafe_report_hidden_v26').select('session_id').limit(1000);
   if(hidden.error)throw hidden.error;state.hiddenReports=(hidden.data||[]).map(x=>x.session_id);
   const rev=await db.from('cafe_restore_events_v41').select('session_id,table_id,restored_at,closing_snapshot,payment_snapshot,advance_snapshot').order('restored_at',{ascending:false}).limit(50);
@@ -65,6 +65,8 @@ async function reload(silent=false){
    state.segments=sg.data||[];
    const advances=await db.from('cafe_session_advances_v26').select('session_id,amount,method,paid_at').in('session_id',sessionIds);
    if(advances.error)throw advances.error;state.advances=advances.data||[];
+   const partials=await db.from('cafe_partial_payments_v57').select('id,session_id,amount,method,paid_at').in('session_id',sessionIds).limit(1000);
+   if(partials.error)throw partials.error;state.partials=partials.data||[];
    const payments=await db.from('cafe_payments').select('session_id,gross_amount,discount_amount,cash_amount,card_amount,paid_at').in('session_id',sessionIds).limit(1000);
    if(payments.error)throw payments.error;
    state.payments=payments.data||[];
@@ -90,6 +92,10 @@ async function reload(silent=false){
 }
 const advanceFor=id=>state.advances.find(x=>x.session_id===id);
 const advanceAmount=id=>Number(advanceFor(id)?.amount||0);
+const partialPayments=id=>state.partials.filter(p=>p.session_id===id);
+const partialAmount=id=>fromCentsSafe(partialPayments(id).reduce((a,p)=>a+Number(p.amount||0),0));
+const fromCentsSafe=n=>Math.round((Number(n)||0)*100)/100;
+const upfrontAmount=id=>fromCentsSafe(advanceAmount(id)+partialAmount(id));
 const isReportHidden=id=>state.hiddenReports.includes(id);
 const manualForSession=id=>state.manualItems.filter(i=>i.session_id===id&&!i.voided_at);
 const manualAmount=id=>manualForSession(id).reduce((a,i)=>a+Number(i.unit_price||0)*Number(i.qty||0),0);
@@ -185,7 +191,6 @@ function selectDeskTable(id){
   <label class="side-label">🕓 Açılış tarihi ve saati
    <input id="sideStartTime" type="datetime-local" value="${local}" aria-label="Açılış tarihi ve saatini doğrudan düzenle">
   </label>
-  <button type="button" id="sideSaveStartTime" class="secondary side-save-time" hidden>✓ Açılış Saatini Kaydet</button>
   ${s.mode==='timed'?`<div class="side-line"><span>🕔 Bitiş saati</span><strong>${esc(endLocal)}</strong></div><div class="side-line"><span>⏳ Kalan süre</span><strong class="side-remain" data-left="${s.id}">—</strong></div>`:''}
   <label class="side-label">🎮 Kol sayısı
    <select id="sideControllers">${[1,2,3,4].map(n=>`<option value="${n}" ${n===Number(s.controllers)?'selected':''}>${n} Kol · ${esc(money(rate(t.id,n)))}/saat</option>`).join('')}</select>
@@ -193,34 +198,20 @@ function selectDeskTable(id){
   <div class="side-line"><span>⏱ Geçen süre</span><strong data-timer="${s.id}">—</strong></div>
   <div class="side-line"><span>🎮 Oyun ücreti</span><strong data-amount="${s.id}">${esc(money(gameAmount(s)))}</strong></div>
   <div class="side-line"><span>🧾 QR + Adisyon</span><strong>${esc(money(productAmount(s.id)))}</strong></div>
+  <div class="side-line"><span>💰 Kısmi tahsilat</span><strong>${esc(money(partialAmount(s.id)))}</strong></div>
   <div class="side-line side-total"><span>💰 Toplam ücret</span><strong data-total="${s.id}">${esc(money(gameAmount(s)+productAmount(s.id)))}</strong></div>
   <button class="side-manual" id="sideManual" type="button">＋ Adisyon Ekle</button>
   <button class="side-primary" id="sideClose" type="button">💳 Hesap Kes</button>`;
   panel.append(box);
   $('sideManual').onclick=()=>openManualDialog(t.id);
   $('sideClose').onclick=()=>showReceipt(s.id);
-  const openingInput=$('sideStartTime');
-  const openingSave=$('sideSaveStartTime');
-  // Tarih alanindan cikmak, sekmeye tiklamak veya secim degistirmek hicbir popup acmaz.
-  // Veri sadece acikca Kaydet butonuna basilirsa guncellenir.
-  openingInput.addEventListener('input',()=>{
-   openingSave.hidden=openingInput.value===local;
-  });
-  openingInput.addEventListener('change',()=>{
-   openingSave.hidden=openingInput.value===local;
-  });
-  openingSave.addEventListener('click',async()=>{
-   const value=openingInput.value;
-   if(!value||Number.isNaN(new Date(value).getTime())){msg('Acilis saati gecersiz.',true);return;}
-   const selectedDate=new Date(value);
-   if(selectedDate.getTime()>Date.now()){msg('Acilis saati gelecekte olamaz.',true);return;}
-   openingInput.disabled=true;openingSave.disabled=true;
-   try{
-    const r=await db.rpc('cafe_change_start_v10',{p_session_id:s.id,p_started_at:selectedDate.toISOString()});
-    if(r.error)throw r.error;
-    await reload();
-    msg('Açılış saati güncellendi.');
-   }catch(err){openingInput.disabled=false;openingSave.disabled=false;msg('Açılış saati değiştirilemedi: '+err.message,true);}
+  $('sideStartTime').addEventListener('change',async e=>{
+   const input=e.currentTarget,value=input.value;
+   if(!value||Number.isNaN(new Date(value).getTime())){msg('Açılış saati geçersiz.',true);return;}
+   if(!confirm('Açılış tarihi ve saati güncellensin mi?')){selectDeskTable(t.id);return;}
+   input.disabled=true;
+   try{const r=await db.rpc('cafe_change_start_v10',{p_session_id:s.id,p_started_at:new Date(value).toISOString()});if(r.error)throw r.error;await reload();msg('Açılış saati değiştirildi.');}
+   catch(err){input.disabled=false;msg('Açılış saati değiştirilemedi: '+err.message,true);}
   });
   $('sideControllers').addEventListener('change',async e=>{
    const select=e.currentTarget,n=Number(select.value),hour=rate(t.id,n);
@@ -267,10 +258,8 @@ function setDeskTab(tab){
  $('tableWorkspace').hidden=tab!=='tables';
  $('ordersDeskView').hidden=tab!=='orders';
  $('reportsView').hidden=tab!=='reports';
- // CSS display:grid!important masa duzenini gizli sekmelerde tekrar acmamali.
- $('tableWorkspace').classList.toggle('desk-view-hidden',tab!=='tables');
- $('ordersDeskView').classList.toggle('desk-view-hidden',tab!=='orders');
- $('reportsView').classList.toggle('desk-view-hidden',tab!=='reports');
+ document.querySelector('.stats').hidden=tab!=='tables';
+ $('recentHistory').hidden=tab!=='tables';
  $('tabTables').classList.toggle('active',tab==='tables');
  $('tabOrders').classList.toggle('active',tab==='orders');
  $('showReports').classList.toggle('active',tab==='reports');
@@ -396,7 +385,7 @@ function renderBulkOpen(){
 }
 function renderBulkClose(){
  const tables=bulkSelectedTables().filter(t=>active(t));let gross=0,advance=0;
- $('bulkRows').innerHTML=tables.map(t=>{const s=active(t),r=receiptData(s),upfront=advanceAmount(s.id),balance=Math.max(0,r.total-upfront);gross+=r.total;advance+=upfront;
+ $('bulkRows').innerHTML=tables.map(t=>{const s=active(t),r=receiptData(s),upfront=upfrontAmount(s.id),balance=Math.max(0,r.total-upfront);gross+=r.total;advance+=upfront;
   return `<tr data-bulk-id="${esc(t.id)}"><th scope="row">${esc(t.name)}</th><td>${Number(s.controllers)} kol</td><td>${fmtTime(r.seconds)}</td><td>${money(r.game)}</td><td>${money(r.orders)}</td><td>${money(upfront)}</td><td><strong>${money(balance)}</strong><details><summary>Alınan ürünler</summary>${r.items.length?r.items.map(i=>`<div>${esc(i.name)} · ${Number(i.qty)} × ${money(i.price)}</div>`).join(''):'Ürün yok'}</details></td></tr>`}).join('');
  $('bulkFooter').innerHTML=`<tr><th colspan="5">GENEL TOPLAM <strong>${money(gross)}</strong></th><th>Ön ödeme ${money(advance)}</th><th>TAHSİL EDİLECEK <strong>${money(Math.max(0,gross-advance))}</strong></th></tr>`;
 }
@@ -450,7 +439,7 @@ function askBulkCloseConfirmation(tables,estimate,method){
  $('bulkConfirmText').textContent=`${tables.length} masanın hesabı kapatılacak. Ödeme yöntemi: ${method==='card'?'KART':'NAKİT'}.`;
  const rows=tables.map(t=>{
   const s=active(t);if(!s)return '';
-  const r=receiptData(s),paid=advanceAmount(s.id);
+  const r=receiptData(s),paid=upfrontAmount(s.id);
   return `<div class="bulk-confirm-item"><span>${esc(t.name)}</span><span>${money(Math.max(0,r.total-paid))}</span></div>`;
  }).join('');
  $('bulkConfirmList').innerHTML=rows+`<div class="bulk-confirm-sum"><strong>TAHSİL EDİLECEK (TAHMİNİ)</strong><strong>${money(estimate)}</strong></div>`;
@@ -467,7 +456,7 @@ function askBulkCloseConfirmation(tables,estimate,method){
 async function runBulkClose(){
  const tables=bulkSelectedTables().filter(t=>active(t));
  const method=$('bulkPaymentMethod').value;
- const estimate=tables.reduce((sum,t)=>{const s=active(t);return sum+Math.max(0,receiptData(s).total-advanceAmount(s.id))},0);
+ const estimate=tables.reduce((sum,t)=>{const s=active(t);return sum+Math.max(0,receiptData(s).total-upfrontAmount(s.id))},0);
  // İkinci, büyük onay penceresi: burada onaylanmadan hiçbir hesabı kapatma.
  const approved=await askBulkCloseConfirmation(tables,estimate,method);
  if(!approved)return;
@@ -483,7 +472,7 @@ async function runBulkClose(){
    if(!fresh.data?.ended_at)throw Error('Kapanış kaydı doğrulanamadı');
    const total=Number(fresh.data.final_total_amount??(Number(fresh.data.final_game_amount||0)+Number(fresh.data.final_order_amount||0)));
    if(!Number.isFinite(total)||total<0)throw Error('Kesin hesap tutarı geçersiz');
-   const due=Math.max(0,fromCents(cents(total)-cents(advanceAmount(s.id))));
+   const due=fromCents(cents(total)-cents(upfrontAmount(s.id)));if(due<0)throw Error('Önceden alınan para kesin hesap tutarını aşıyor; manuel kontrol gerekli.');
    // Yeniden denemede aynı oturuma iki ödeme yazılmaması sunucu RPC kontrolüne dayanır.
    const payment=await db.rpc('cafe_record_payment_v26',{p_session_id:s.id,p_discount_amount:0,p_cash_amount:method==='cash'?due:0,p_card_amount:method==='card'?due:0});
    if(payment.error)throw Error('Hesap KAPANDI, ÖDEME kaydedilemedi: '+payment.error.message);
@@ -506,7 +495,7 @@ $('bulkSubmit').addEventListener('click',async()=>{
  finally{bulkWorking=false;btn.disabled=false;$('bulkCancel').disabled=false;$('bulkX').disabled=false}
 });
 $('bulkDialog').addEventListener('close',()=>{$('bulkSubmit').hidden=false;bulkMode=null;updateBulkSelection()});
-function updateOutstanding(){const live=state.sessions.filter(s=>!s.ended_at);const due=live.reduce((sum,s)=>sum+Math.max(0,gameAmount(s)+productAmount(s.id)-advanceAmount(s.id)),0);$('outstandingAmount').textContent=money(due);$('outstandingCount').textContent=live.length+' açık hesap · anlık tahmin (5 TL dilimi)';}
+function updateOutstanding(){const live=state.sessions.filter(s=>!s.ended_at);const due=live.reduce((sum,s)=>sum+Math.max(0,gameAmount(s)+productAmount(s.id)-upfrontAmount(s.id)),0);$('outstandingAmount').textContent=money(due);$('outstandingCount').textContent=live.length+' açık hesap · anlık tahmin (5 TL dilimi)';}
 function tick(){if($('app').hidden)return;updateOutstanding();for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}updateDesktopTimers();}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden&&!bulkWorking)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
@@ -714,6 +703,7 @@ const receiptHTML=r=>`<div class="receipt-brand">BETA <span>PLAYSTATION</span></
  ${r.items.length?`<div class="receipt-products">${r.items.map(i=>`<div class="receipt-line"><span>${i.qty} × ${esc(i.name)} ${i.source==='manual'?'<small>• Manuel</small>':''} <small>(${money(i.price)} / adet)</small></span><strong>${money(i.qty*i.price)}</strong></div>`).join('')}</div>`:'<p class="muted">Bu hesapta ürün siparişi bulunmuyor.</p>'}
  <div class="receipt-line receipt-subtotal"><span>Ürün toplamı</span><strong>${money(r.orders)}</strong></div>
  ${advanceAmount(r.id)>0?`<div class="receipt-line"><span>✓ Açılışta tahsil edildi (${advanceFor(r.id)?.method==='card'?'Kart':'Nakit'})</span><strong>${money(advanceAmount(r.id))}</strong></div>`:''}
+ ${partialAmount(r.id)>0?`<div class="receipt-line"><span>✓ Ara tahsilat</span><strong>${money(partialAmount(r.id))}</strong></div>`:''}
  <div class="receipt-line receipt-total"><span>GENEL TOPLAM</span><strong>${money(r.total)}</strong></div>
  <p class="receipt-foot">Bu ekran bir adisyon özetidir, mali fiş değildir. Ödeme kaydı oluşturulmaz.</p>`;
 async function showReceipt(id){
@@ -781,14 +771,14 @@ function discountValue(gross){
  return fromCents(val);
 }
 function updatePaymentPreview(){
- const total=paymentTotal(),advance=advanceAmount(paymentSessionId);
+ const total=paymentTotal(),advance=upfrontAmount(paymentSessionId);
  try{
   const discount=discountValue(Math.max(0,total-advance)),net=fromCents(cents(total)-cents(advance)-cents(discount));
   const cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
   if(!Number.isFinite(cash)||!Number.isFinite(card)||cash<0||card<0)throw Error('Ödeme tutarları geçersiz.');
   const diff=fromCents(cents(net)-cents(cash)-cents(card));
   $('paymentAdvance').textContent=money(advance);
-  $('paymentSummary').innerHTML=`<div class="payment-line"><span>Hesap tutarı</span><strong>${money(total)}</strong></div><div class="payment-line"><span>Açılışta alınan</span><strong>− ${money(advance)}</strong></div><div class="payment-line"><span>İskonto</span><strong>− ${money(discount)}</strong></div><div class="payment-line payment-net"><span>Ödenecek</span><strong>${money(net)}</strong></div><div class="payment-line"><span>Nakit + Kart</span><strong>${money(cash+card)}</strong></div><div class="payment-line"><span>${diff>=0?'Kalan':'Fazla girilen'}</span><strong>${money(Math.abs(diff))}</strong></div>`;
+  $('paymentSummary').innerHTML=`<div class="payment-line"><span>Hesap tutarı</span><strong>${money(total)}</strong></div><div class="payment-line"><span>Önceden tahsil edilen</span><strong>− ${money(advance)}</strong></div><div class="payment-line"><span>İskonto</span><strong>− ${money(discount)}</strong></div><div class="payment-line payment-net"><span>Ödenecek</span><strong>${money(net)}</strong></div><div class="payment-line"><span>Nakit + Kart</span><strong>${money(cash+card)}</strong></div><div class="payment-line"><span>${diff>=0?'Kalan':'Fazla girilen'}</span><strong>${money(Math.abs(diff))}</strong></div>`;
   $('paymentSave').disabled=diff!==0;
   $('paymentWarning').textContent=diff===0?'Tutarlar eşleşiyor; ödemeyi kaydedebilirsin.':'Nakit ve kart toplamı ödenecek tutara eşit olmalı.';
  }catch(e){$('paymentSummary').textContent='Kontrol: '+e.message;$('paymentSave').disabled=true;$('paymentWarning').textContent=e.message}
@@ -798,7 +788,7 @@ function fillPendingPayment(id){
  $('paymentTableName').textContent=receiptSnapshot.name;
  $('paymentGross').textContent=money(paymentTotal());
  $('paymentForm').reset();$('payDiscountType').value='amount';$('payDiscount').value='0';
- $('payCash').value='0';$('payCard').value=Math.max(0,paymentTotal()-advanceAmount(id)).toFixed(2);
+ $('payCash').value='0';$('payCard').value=Math.max(0,paymentTotal()-upfrontAmount(id)).toFixed(2);
  for(const input of $('paymentForm').querySelectorAll('input,select'))input.disabled=false;
  $('paymentSave').hidden=false;
  $('paymentSave').textContent='✓ Hesabı Kapat ve Ödemeyi Kaydet';
@@ -812,12 +802,12 @@ function fillPayment(id){
  $('paymentTableName').textContent=state.tables.find(t=>t.id===s.table_id)?.name||'Masa';
  $('paymentGross').textContent=money(paymentTotal());
  $('paymentForm').reset();$('payDiscountType').value='amount';$('payDiscount').value='0';
- $('payCash').value=Math.max(0,paymentTotal()-advanceAmount(id)).toFixed(2);$('payCard').value='0';
+ $('payCash').value=Math.max(0,paymentTotal()-upfrontAmount(id)).toFixed(2);$('payCard').value='0';
  const disabled=Boolean(paid);
  for(const input of $('paymentForm').querySelectorAll('input,select'))input.disabled=disabled;
  $('paymentSave').hidden=disabled;
  if(disabled){
-  $('paymentSummary').innerHTML=`<div class="payment-line"><span>Açılışta alınan</span><strong>${money(advanceAmount(id))}</strong></div><div class="payment-line"><span>İskonto</span><strong>${money(paid.discount_amount)}</strong></div><div class="payment-line"><span>Nakit</span><strong>${money(paid.cash_amount)}</strong></div><div class="payment-line"><span>Kart</span><strong>${money(paid.card_amount)}</strong></div><div class="payment-line payment-net"><span>Tahsil edilen</span><strong>${money(Number(paid.cash_amount)+Number(paid.card_amount))}</strong></div>`;
+  $('paymentSummary').innerHTML=`<div class="payment-line"><span>Önceden alınan</span><strong>${money(upfrontAmount(id))}</strong></div><div class="payment-line"><span>İskonto</span><strong>${money(paid.discount_amount)}</strong></div><div class="payment-line"><span>Nakit</span><strong>${money(paid.cash_amount)}</strong></div><div class="payment-line"><span>Kart</span><strong>${money(paid.card_amount)}</strong></div><div class="payment-line payment-net"><span>Tahsil edilen</span><strong>${money(Number(paid.cash_amount)+Number(paid.card_amount))}</strong></div>`;
   $('paymentWarning').textContent='✓ Ödeme daha önce kaydedildi. İkinci tahsilat yapılamaz.';
  }else updatePaymentPreview();
 }
@@ -836,7 +826,7 @@ async function savePaymentRecord(){
   const preTotal=paymentTotal();
   const discountType=$('payDiscountType').value;
   const discountInput=$('payDiscount').value;
-  const upfront=advanceAmount(paymentSessionId),discount=discountValue(Math.max(0,preTotal-upfront)),cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
+  const upfront=upfrontAmount(paymentSessionId),discount=discountValue(Math.max(0,preTotal-upfront)),cash=Number($('payCash').value||0),card=Number($('payCard').value||0);
   if(![cash,card].every(n=>Number.isFinite(n)&&n>=0))throw Error('Nakit ve kart negatif olamaz.');
   if(cents(cash)+cents(card)!==cents(preTotal)-cents(upfront)-cents(discount))throw Error('Nakit + Kart toplamı ödenecek tutara eşit olmalı.');
   const id=paymentSessionId;
@@ -856,7 +846,7 @@ async function savePaymentRecord(){
    // Kesin hesap birkaç saniye farklı olabilir: ikinci onay ekranı açmadan ödeme dağılımını güncelle.
    // Tam kart veya tam nakitse tutarı kesin değere otomatik uyarla.
    // Parçalı işlemde kullanıcı nakit tutarını koru, farkı kartta dengele.
-   const finalDue=Math.max(0,fromCents(cents(actual)-cents(advanceAmount(id))-cents(discountValue(Math.max(0,actual-advanceAmount(id))))));
+   const finalDue=Math.max(0,fromCents(cents(actual)-cents(upfrontAmount(id))-cents(discountValue(Math.max(0,actual-upfrontAmount(id))))));
    if(fullCard){$('payCash').value='0';$('payCard').value=finalDue.toFixed(2)}
    else if(fullCash){$('payCard').value='0';$('payCash').value=finalDue.toFixed(2)}
    else{
@@ -869,8 +859,8 @@ async function savePaymentRecord(){
    }
    updatePaymentPreview();
   }
-  const finalDiscount=discountValue(Math.max(0,paymentTotal()-advanceAmount(id))),finalCash=Number($('payCash').value||0),finalCard=Number($('payCard').value||0);
-  if(cents(finalCash)+cents(finalCard)!==cents(paymentTotal())-cents(advanceAmount(id))-cents(finalDiscount)){
+  const finalDiscount=discountValue(Math.max(0,paymentTotal()-upfrontAmount(id))),finalCash=Number($('payCash').value||0),finalCard=Number($('payCard').value||0);
+  if(cents(finalCash)+cents(finalCard)!==cents(paymentTotal())-cents(upfrontAmount(id))-cents(finalDiscount)){
    throw Error('Kapanıştaki kesin tutar değişti. Nakit / kart değerlerini kontrol edip Ödemeyi Kaydet butonuna tekrar bas. Masa kapandı, ödeme henüz kaydedilmedi.');
   }
   const r=await db.rpc('cafe_record_payment_v26',{p_session_id:id,p_discount_amount:finalDiscount,p_cash_amount:finalCash,p_card_amount:finalCard});
@@ -898,7 +888,7 @@ $('receiptDialog').addEventListener('keydown',async e=>{
  e.preventDefault();e.stopPropagation();enterCloseBusy=true;
  try{
   $('payDiscountType').value='amount';$('payDiscount').value='0';
-  $('payCash').value='0';$('payCard').value=Math.max(0,paymentTotal()-advanceAmount(paymentSessionId)).toFixed(2);
+  $('payCash').value='0';$('payCard').value=Math.max(0,paymentTotal()-upfrontAmount(paymentSessionId)).toFixed(2);
   updatePaymentPreview();
   await savePaymentRecord();
  }finally{enterCloseBusy=false;}
@@ -946,7 +936,7 @@ async function loadReport(){
   }
   const orders=new Map(),orderIds=[...new Set(links.map(l=>l.order_id))];
   for(let i=0;i<orderIds.length;i+=100){const r=await db.from('orders').select('id,status,total,order_items(product_name,qty,unit_price)').in('id',orderIds.slice(i,i+100));if(r.error)throw r.error;for(const o of r.data||[])orders.set(o.id,o);}
-  const reportAdvances=new Map(),reportPayments=new Map();for(let i=0;i<ids.length;i+=100){const chunk=ids.slice(i,i+100);const [a,p]=await Promise.all([db.from('cafe_session_advances_v26').select('session_id,amount,method').in('session_id',chunk),db.from('cafe_payments').select('session_id,cash_amount,card_amount,discount_amount').in('session_id',chunk)]);if(a.error)throw a.error;if(p.error)throw p.error;for(const z of a.data||[])reportAdvances.set(z.session_id,z);for(const z of p.data||[])reportPayments.set(z.session_id,z);}
+  const reportAdvances=new Map(),reportPayments=new Map(),reportPartials=new Map();for(let i=0;i<ids.length;i+=100){const chunk=ids.slice(i,i+100);const [a,p,pp]=await Promise.all([db.from('cafe_session_advances_v26').select('session_id,amount,method').in('session_id',chunk),db.from('cafe_payments').select('session_id,cash_amount,card_amount,discount_amount').in('session_id',chunk),db.from('cafe_partial_payments_v57').select('session_id,amount,method').in('session_id',chunk)]);if(a.error)throw a.error;if(p.error)throw p.error;if(pp.error)throw pp.error;for(const z of a.data||[])reportAdvances.set(z.session_id,z);for(const z of p.data||[])reportPayments.set(z.session_id,z);for(const z of pp.data||[])reportPartials.set(z.session_id,fromCentsSafe((reportPartials.get(z.session_id)||0)+Number(z.amount||0)));}
   const mBy=new Map(),lBy=new Map();
   for(const m of manual){if(!mBy.has(m.session_id))mBy.set(m.session_id,[]);mBy.get(m.session_id).push(m)}
   for(const l of links){if(!lBy.has(l.session_id))lBy.set(l.session_id,[]);lBy.get(l.session_id).push(l.order_id)}
@@ -965,8 +955,8 @@ async function loadReport(){
    const name=state.tables.find(t=>t.id===s.table_id)?.name||'Silinmiş masa';
    const sSeg=reportSegments.filter(z=>z.session_id===s.id),first=sSeg[0];
    const changes=sSeg.length>1?`<div class="report-group"><b>Tarife değişiklikleri</b>${sSeg.map(z=>`<div>${new Date(z.started_at).toLocaleString('tr-TR')} · ${esc(state.tables.find(t=>t.id===z.table_id)?.name||'Masa')} · ${z.controllers} Kol · ${money(z.hourly_price)}/saat</div>`).join('')}</div>`:'';
-   const advance=reportAdvances.get(s.id),payment=reportPayments.get(s.id);
-   const payStatus=payment?`<small class="paid-state">✓ Ödendi · açılış ${money(advance?.amount||0)} · kapanış ${money(Number(payment.cash_amount)+Number(payment.card_amount)-Number(advance?.amount||0))}</small>`:advance?`<small class="partial-state">◐ Açılışta ${money(advance.amount)} alındı · kalan ödeme bekliyor</small>`:'<small class="unpaid-state">⚠ Tahsilat kaydı yok</small>';
+   const advance=reportAdvances.get(s.id),payment=reportPayments.get(s.id),partial=reportPartials.get(s.id)||0;
+   const payStatus=payment?`<small class="paid-state">✓ Ödendi · açılış ${money(advance?.amount||0)} · ara ödeme ${money(partial)} · kapanış ${money(Number(payment.cash_amount)+Number(payment.card_amount)-Number(advance?.amount||0)-partial)}</small>`:advance?`<small class="partial-state">◐ Açılışta ${money(advance.amount)} alındı · ara ödeme ${money(partial)} · kalan bekliyor</small>`:partial?`<small class="partial-state">◐ Ara ödeme ${money(partial)} alındı · kapanış tahsilatı bekliyor</small>`:'<small class="unpaid-state">⚠ Tahsilat kaydı yok</small>';
    rows.push(`<tr><td><strong>${esc(name)}</strong><br><small class="report-start">🟢 Açılış: ${new Date(s.started_at).toLocaleString('tr-TR')} · ${Number(first?.controllers||s.controllers)} Kol</small><br><small class="report-end">🔴 Kapanış: ${new Date(s.ended_at).toLocaleString('tr-TR')}</small><br><small>${s.mode==='timed'?'Süreli':'Süresiz'}</small><details class="report-detail"><summary>Alınanları göster</summary>${details('QR siparişleri',qrItems)}${details('Kasa adisyonu',manualItems.map(m=>({name:m.product_name,qty:m.qty,price:m.unit_price})))}${changes}</details></td><td>${minutesLabel(secs)}</td><td>${money(game)}</td><td>${money(qrTotal)}</td><td>${money(manualTotal)}</td><td><strong>${money(total)}</strong><br>${payStatus}</td><td><button type="button" class="secondary report-hide" data-hide-report="${esc(s.id)}">Rapordan kaldır</button></td></tr>`);
   }
   $('reportRows').innerHTML=rows.join('');
@@ -1037,8 +1027,8 @@ function showTableContext(id,x,y){
  const last=state.sessions.find(s=>s.table_id===id&&s.ended_at);
  for(const b of contextMenu.querySelectorAll('button')){
   const a=b.dataset.contextAction;
-  b.disabled=(a==='manual'||a==='manage'||a==='close')&&!s || a==='restore'&&(!last||!!s)||a==='partial';
-  if(a==='partial')b.title='Açık hesaptan kısmi tahsilat için veritabanı desteği gerekiyor; şimdilik kapalı.';
+  b.disabled=(a==='manual'||a==='manage'||a==='close')&&!s || a==='restore'&&(!last||!!s);
+  if(a==='partial'){b.disabled=!s;b.title=s?'Masa açık kalırken nakit veya kart ara tahsilatı kaydet':'Kısmi ödeme için önce hesap açılmalı';b.textContent='💰 Kısmi Ödeme';}
  }
  contextMenu.hidden=false;contextMenu.style.left=Math.max(8,Math.min(x,window.innerWidth-255))+'px';
  contextMenu.style.top=Math.max(8,Math.min(y,window.innerHeight-305))+'px';
@@ -1049,6 +1039,7 @@ contextMenu.addEventListener('click',async e=>{
  const s=active(t),a=b.dataset.contextAction;
  if(a==='settings')editTable(id);
  else if(a==='manual'&&s)openManualDialog(id);
+ else if(a==='partial'&&s)openPartialPayment(s.id);
  else if(a==='manage'&&s)openManageSession(s.id);
  else if(a==='close'&&s)await showReceipt(s.id);
  else if(a==='restore'){
@@ -1068,3 +1059,48 @@ async function hideReport(id){
  try{const r=await db.rpc('cafe_hide_report_v26',{p_session_id:id});if(r.error)throw r.error;await reload(true);await loadReport();msg('Kayıt rapor görünümünden kaldırıldı; mali kayıt korunuyor.');}
  catch(e){msg('Rapor gizlenemedi: '+e.message,true)}
 }
+
+
+// V57 - kismi tahsilat: veritabaninda yetkili, server-side sinirli ve tekil islem.
+// Ayni para kapanista tekrar tahsil edilmez; tum parasal degerler SQL RPC ile onaylanir.
+(function initPartialPaymentsV57(){
+ const d=document.createElement('dialog');d.id='partialPayDialogV57';d.className='partial-pay-v57';
+ d.innerHTML=`<form id="partialPayFormV57"><div class="modalhead"><h2>💰 Kısmi Ödeme Al</h2><button type="button" class="secondary" id="partialPayCancelXV57">✕</button></div><p id="partialPayNameV57"></p><div class="partial-pay-values"><div>Güncel toplam <strong id="partialPayTotalV57"></strong></div><div>Önceden alınan <strong id="partialPayPreviousV57"></strong></div><div>En fazla tahsil edilebilir <strong id="partialPayMaxV57"></strong></div></div><label>Ödeme tutarı (₺)<input type="number" id="partialPayAmountV57" min="0.01" step="0.01" required></label><label>Ödeme yöntemi<select id="partialPayMethodV57"><option value="cash">💵 Nakit</option><option value="card">💳 Kart</option></select></label><p class="muted" id="partialPayWarningV57">Masa açık kalır. Bu işlem uygulama içi tahsilat kaydıdır; fiziksel POS çekimi yapmaz.</p><div class="row end"><button type="button" class="secondary" id="partialPayCancelV57">Vazgeç</button><button type="submit" id="partialPaySaveV57">Ödemeyi Kaydet</button></div></form>`;
+ document.body.appendChild(d);
+ const input=d.querySelector('#partialPayAmountV57'),save=d.querySelector('#partialPaySaveV57');
+ let session=null,busy=false,requestId=null;
+ function dismiss(){if(!busy)d.close()}
+ d.querySelector('#partialPayCancelV57').onclick=dismiss;
+ d.querySelector('#partialPayCancelX'+'V57').onclick=dismiss;
+ d.addEventListener('cancel',e=>{if(busy)e.preventDefault()});
+ window.openPartialPayment=async function(id){
+  if(busy)return;
+  await reload(true);
+  const s=state.sessions.find(x=>x.id===id&&!x.ended_at);
+  if(!s){msg('Bu masa artık açık değil.',true);return;}
+  session=id;requestId=crypto.randomUUID();const maximum=fromCentsSafe(Math.max(0,gameAmount(s)+productAmount(id)-upfrontAmount(id)));
+  if(maximum<=0){msg('Güncel hesapta ara tahsil edilecek tutar bulunmuyor.',true);return;}
+  d.querySelector('#partialPayNameV57').textContent=state.tables.find(t=>t.id===s.table_id)?.name||'Masa';
+  d.querySelector('#partialPayTotalV57').textContent=money(gameAmount(s)+productAmount(id));
+  d.querySelector('#partialPayPreviousV57').textContent=money(upfrontAmount(id));
+  d.querySelector('#partialPayMaxV57').textContent=money(maximum);
+  d.querySelector('#partialPayWarningV57').textContent='Masa açık kalır. Kısmi ödeme kapanıştan düşülür; POS cihazından para çekilmez.';
+  input.max=String(maximum);input.value=maximum.toFixed(2);
+  d.showModal();
+ };
+ d.querySelector('#partialPayFormV57').addEventListener('submit',async e=>{
+  e.preventDefault();if(busy||!session)return;
+  const amount=Number(input.value),method=d.querySelector('#partialPayMethodV57').value;
+  if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100&&Math.abs(amount*100-Math.round(amount*100))>0.0001){msg('En fazla iki ondalıklı, pozitif bir tutar gir.',true);return;}
+  if(!confirm(`${money(amount)} ${method==='card'?'KART':'NAKİT'} kısmi tahsilat kaydedilsin mi? Masa açık kalacak.`))return;
+  busy=true;save.disabled=true;
+  try{
+   const r=await db.rpc('cafe_record_partial_v57',{p_session_id:session,p_amount:amount,p_method:method,p_request_id:requestId});
+   if(r.error)throw r.error;
+   d.close();await reload(true);
+   if(selectedTableId)selectDeskTable(selectedTableId);
+   msg(`Kısmi ödeme kaydedildi: ${money(amount)} (${method==='cash'?'Nakit':'Kart'}). Masa açık.`);
+  }catch(err){msg('Kısmi ödeme kaydedilemedi: '+err.message,true);d.querySelector('#partialPayWarningV57').textContent=err.message;}
+  finally{busy=false;save.disabled=false;}
+ });
+})();
