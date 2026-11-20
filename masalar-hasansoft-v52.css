@@ -1,0 +1,56 @@
+/* Beta Playstation V52 — Hasansoft esinli masa kontrol gorunumu.
+   YALNIZCA GORSEL CSS. Veri tabani, tarife ve odeme mantigini degistirmez.
+   masalar-v47-duzen.css'den SONRA yukleyin. */
+:root{--hs-red:#d52a32;--hs-green:#3fbd72;--hs-line:#514249;--hs-panel:#1b191e}
+#app .headrow{padding-bottom:10px;border-bottom:1px solid #382e35}
+#app .headrow h1{font-size:24px;letter-spacing:.2px}
+#app .headrow>.row{gap:7px}
+#app .desktop-nav{border-radius:5px;min-height:37px}
+#app .desktop-nav.active{background:#bd1927}
+#app .table-workspace{gap:10px!important}
+#selectedTablePanel{background:var(--hs-panel)!important;border:1px solid var(--hs-line)!important;border-radius:7px!important;padding:12px!important}
+#selectedTablePanel .selected-heading{font-size:15px!important;color:#fff!important;padding:7px 9px;border-left:4px solid #ee374b;background:#2f2229;border-radius:3px;margin-bottom:12px!important}
+#selectedTablePanel .card.desktop-detail{background:#211d23!important;border:1px solid #4a3942!important;border-radius:6px!important;padding:12px!important}
+#selectedTablePanel .minirow{padding:5px 0;border-bottom:1px solid #ffffff0c}
+#selectedTablePanel .time{font-variant-numeric:tabular-nums}
+#selectedTablePanel .amount,#selectedTablePanel .due strong{color:#8ff4ab}
+#selectedTablePanel button{border-radius:5px!important}
+#selectedTablePanel button:not(.secondary){min-height:39px}
+#selectedTablePanel input,#selectedTablePanel select{border-radius:5px}
+#app #tableIconsArea{background:#131216!important;border:1px solid var(--hs-line)!important;border-radius:6px!important}
+#tableIconsArea .icon-list-heading{padding-bottom:9px;margin-bottom:10px!important;border-bottom:1px solid #362d33}
+#tableIconsArea .icon-list-heading h2{font-size:16px!important}
+/* Hasansoft benzeri durum renklendirmesi; mevcut semboller, ozel tipler ve isimler korunur. */
+#tableIconsArea #cards .desk-tile{
+  border:2px solid #9d343f!important;
+  background:linear-gradient(150deg,#73202b 0%,#481a24 57%,#241a22 100%)!important;
+  border-radius:4px!important;
+  box-shadow:inset 0 1px 0 #ffffff12,0 2px 5px #0005;
+  transition:filter .12s,border-color .12s,box-shadow .12s;
+}
+#tableIconsArea #cards .desk-tile.desk-busy{
+  background:linear-gradient(145deg,#226b3e 0%,#134a31 58%,#173024 100%)!important;
+  border-color:#49d37d!important;
+}
+#tableIconsArea #cards .desk-tile:hover{filter:brightness(1.13)}
+#tableIconsArea #cards .desk-tile.is-selected{outline:3px solid #f7e4b3!important;outline-offset:2px!important;box-shadow:0 0 0 2px #000,0 0 12px #eacb8a55}
+#tableIconsArea #cards .desk-tile-name{background:#100f14d9!important;border-top:1px solid #ffffff28!important;letter-spacing:.3px!important;color:#fff!important}
+#tableIconsArea #cards .desk-tile-status{color:#f5c9d0!important}
+#tableIconsArea #cards .desk-tile.desk-busy .desk-tile-status{color:#9cffbf!important}
+#tableIconsArea #cards .desk-tile-clock{color:#fff!important;text-shadow:0 1px 2px #000a}
+#tableIconsArea #cards .desk-tile-clock.expired{color:#ffcb4b!important}
+/* Son Islemler: pencere bolunmesi ve yukseklik suruklemesi korunur. */
+#app #recentHistory{background:#19171b;border:1px solid #514249;border-radius:6px!important}
+#app #recentHistory .recent-top h2{font-size:15px!important}
+#app #recentHistory .outstanding{border-radius:5px}
+#app .table-size-control{border-radius:5px!important}
+/* Yalnizca mevcut modal ayar alanlarina kozmetik dokunus. */
+#tableDialog,#sessionDialog,#manageDialog{border-radius:8px!important;border-color:#72525b!important;background:#201b21!important}
+#tableDialog h2,#sessionDialog h2,#manageDialog h2{border-bottom:1px solid #513940;padding-bottom:10px}
+#tableDialog input,#tableDialog select,#sessionDialog input,#sessionDialog select,#manageDialog input,#manageDialog select{border-radius:5px!important}
+#tableDialog button,#sessionDialog button,#manageDialog button{border-radius:5px!important}
+@media(max-width:900px){
+  #selectedTablePanel{width:100%}
+  #app #tableIconsArea{width:100%}
+  #tableIconsArea #cards .desk-tile{border-radius:4px!important}
+}
