@@ -1,0 +1,15 @@
+.beta-kol-menu-v62{width:100%;display:block;text-align:left;padding:10px 12px;background:transparent;border:0;color:inherit;cursor:pointer;font:inherit}
+.beta-kol-menu-v62:hover{background:#4b2933}
+.beta-kol-menu-v62[hidden]{display:none!important}
+.beta-kol-dialog-v62{border:1px solid #74424d;border-radius:12px;color:#f5f0f2;background:#211a21;padding:22px;width:min(440px,94vw);box-shadow:0 20px 90px #000a}
+.beta-kol-dialog-v62::backdrop{background:#000b}
+.beta-kol-dialog-v62 header,.beta-kol-dialog-v62 footer{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.beta-kol-dialog-v62 h2{font-size:19px;margin:0 0 14px}
+.beta-kol-dialog-v62 label{display:block;margin:16px 0;font-size:13px}
+.beta-kol-dialog-v62 input,.beta-kol-dialog-v62 select{display:block;width:100%;padding:11px;margin-top:6px;background:#33272f;color:white;border:1px solid #72505d;border-radius:7px;box-sizing:border-box}
+.beta-kol-dialog-v62 button{padding:10px 14px;border-radius:7px;border:1px solid #74505d;background:#422f38;color:#fff;cursor:pointer}
+.beta-kol-dialog-v62 button[type=submit]{background:#cf203a;border-color:#cf203a}
+.beta-kol-preview-v62{padding:14px;background:#2d252a;border-radius:8px}
+.beta-kol-preview-v62 div{display:flex;justify-content:space-between;margin:6px 0;gap:12px}
+.beta-kol-note-v62{font-size:12px;color:#d3bec5;line-height:1.5}
+.beta-kol-error-v62{font-size:13px;color:#ff8f9b;min-height:1em}
