@@ -1,0 +1,5 @@
+/* Beta Playstation V58: add a separate net outstanding amount without changing gross. */
+#v58RemainingRow{margin-top:9px;padding:10px 7px;background:rgba(25,139,87,.12);border:1px solid rgba(65,203,136,.48);border-radius:7px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:700}
+#v58RemainingRow span{color:#bff3d8}
+#v58RemainingRow strong{color:#5ff2a7;font-size:1.15em;font-variant-numeric:tabular-nums}
+#tableContextMenu [data-v58-convert]{color:#d7f5ff;font-weight:600}
