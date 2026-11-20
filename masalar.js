@@ -188,9 +188,15 @@ function selectDeskTable(id){
   const end=new Date(date.getTime()+Number(s.planned_seconds||0)*1000);
   const endLocal=new Intl.DateTimeFormat('tr-TR',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}).format(end);
   box.innerHTML=`
-  <label class="side-label">🕓 Açılış tarihi ve saati
-   <input id="sideStartTime" type="datetime-local" value="${local}" aria-label="Açılış tarihi ve saatini doğrudan düzenle">
-  </label>
+  <div class="side-label">🕓 Açılış tarihi ve saati
+   <input id="sideStartDate" type="date" value="${local.slice(0,10)}" aria-label="Açılış tarihi" style="width:100%;box-sizing:border-box;margin-top:6px">
+   <div style="display:flex;align-items:center;gap:6px;margin-top:7px">
+    <select id="sideStartHour" aria-label="Açılış saati" style="flex:1;min-width:0">${Array.from({length:24},(_,h)=>{const v=String(h).padStart(2,'0');return `<option value="${v}" ${h===date.getHours()?'selected':''}>${v}</option>`}).join('')}</select>
+    <span aria-hidden="true" style="font-weight:700">:</span>
+    <select id="sideStartMinute" aria-label="Açılış dakikası" style="flex:1;min-width:0">${Array.from({length:60},(_,m)=>{const v=String(m).padStart(2,'0');return `<option value="${v}" ${m===date.getMinutes()?'selected':''}>${v}</option>`}).join('')}</select>
+   </div>
+   <button id="sideSaveStart" type="button" class="secondary" style="width:100%;margin-top:7px">🕓 Saati Kaydet</button>
+  </div>
   ${s.mode==='timed'?`<div class="side-line"><span>🕔 Bitiş saati</span><strong>${esc(endLocal)}</strong></div><div class="side-line"><span>⏳ Kalan süre</span><strong class="side-remain" data-left="${s.id}">—</strong></div>`:''}
   <label class="side-label">🎮 Kol sayısı
    <select id="sideControllers">${[1,2,3,4].map(n=>`<option value="${n}" ${n===Number(s.controllers)?'selected':''}>${n} Kol · ${esc(money(rate(t.id,n)))}/saat</option>`).join('')}</select>
@@ -205,13 +211,31 @@ function selectDeskTable(id){
   panel.append(box);
   $('sideManual').onclick=()=>openManualDialog(t.id);
   $('sideClose').onclick=()=>showReceipt(s.id);
-  $('sideStartTime').addEventListener('change',async e=>{
-   const input=e.currentTarget,value=input.value;
-   if(!value||Number.isNaN(new Date(value).getTime())){msg('Açılış saati geçersiz.',true);return;}
-   if(!confirm('Açılış tarihi ve saati güncellensin mi?')){selectDeskTable(t.id);return;}
-   input.disabled=true;
-   try{const r=await db.rpc('cafe_change_start_v10',{p_session_id:s.id,p_started_at:new Date(value).toISOString()});if(r.error)throw r.error;await reload();msg('Açılış saati değiştirildi.');}
-   catch(err){input.disabled=false;msg('Açılış saati değiştirilemedi: '+err.message,true);}
+  $('sideSaveStart').addEventListener('click',async()=>{
+   const dateValue=$('sideStartDate').value;
+   const hour=$('sideStartHour').value,minute=$('sideStartMinute').value;
+   const value=`${dateValue}T${hour}:${minute}:00`;
+   const proposed=new Date(value);
+   // Tarih eksik, takvim dışı ya da ileri bir zamansa veritabanına gönderme.
+   if(!dateValue||!Number.isFinite(proposed.getTime())||
+      proposed.getFullYear()!==Number(dateValue.slice(0,4))||
+      proposed.getMonth()+1!==Number(dateValue.slice(5,7))||
+      proposed.getDate()!==Number(dateValue.slice(8,10))||
+      proposed.getHours()!==Number(hour)||proposed.getMinutes()!==Number(minute)){
+    msg('Geçerli bir açılış tarihi ve saati seç.',true);return;
+   }
+   if(proposed.getTime()>Date.now()) {msg('Açılış saati gelecekte olamaz.',true);return;}
+   const currentMinute=Math.floor(date.getTime()/60000);
+   if(Math.floor(proposed.getTime()/60000)===currentMinute){msg('Açılış saati zaten bu değer.',false);return;}
+   if(!confirm('Açılış tarihi ve saati '+dateValue+' '+hour+':'+minute+' olarak güncellensin mi?'))return;
+   const controls=[$('sideStartDate'),$('sideStartHour'),$('sideStartMinute'),$('sideSaveStart')];
+   controls.forEach(el=>el.disabled=true);
+   try{
+    const r=await db.rpc('cafe_change_start_v10',{p_session_id:s.id,p_started_at:proposed.toISOString()});
+    if(r.error)throw r.error;
+    await reload();
+    msg('Açılış saati değiştirildi.');
+   }catch(err){controls.forEach(el=>el.disabled=false);msg('Açılış saati değiştirilemedi: '+err.message,true);}
   });
   $('sideControllers').addEventListener('change',async e=>{
    const select=e.currentTarget,n=Number(select.value),hour=rate(t.id,n);
