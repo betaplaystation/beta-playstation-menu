@@ -548,11 +548,12 @@ function openManualDialog(id){
  if($('manualDialog').open){$('manualDialog').close();}
  renderManualQueue();$('manualDialog').showModal();
 }
+$('manualQty').max='9999'; // V59: kasa adisyonu adet ust siniri
 $('manualQueueAdd').addEventListener('click',()=>{
  if(!manualPickId)return msg('Önce ürün seç.',true);
- const q=Number($('manualQty').value);if(!Number.isInteger(q)||q<1||q>99)return msg('1 ile 99 arasında adet gir.',true);
+ const q=Number($('manualQty').value);if(!Number.isInteger(q)||q<1||q>9999)return msg('1 ile 9999 arasında adet gir.',true);
  const existing=manualQueue.get(manualPickId)||0;
- if(existing+q>99)return msg('Bir ürün için en fazla 99 adet eklenebilir.',true);
+ if(existing+q>9999)return msg('Bir ürün için en fazla 9999 adet eklenebilir.',true);
  manualQueue.set(manualPickId,existing+q);$('manualPick').hidden=true;manualPickId=null;
  $('manualCatalog').querySelectorAll('.manual-catalog-item').forEach(c=>c.classList.remove('picked'));
  renderManualQueue();
