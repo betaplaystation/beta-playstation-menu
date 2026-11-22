@@ -767,13 +767,14 @@ async function closeReceiptAccount(){
   const closed=state.sessions.find(x=>x.id===id);
   if(!closed||!closed.ended_at)throw Error('Hesap kapatıldı ancak kapanış detayları alınamadı. Sayfayı yenileyin.');
   receiptClosed=true;receiptSnapshot=receiptData(closed);
-  $('receiptTitle').textContent='✅ Hesap Kapatıldı · Adisyon';
+  // Ara 'Hesap Kapatıldı' ekranını gösterme: ödeme tek akışta devam eder.
+  $('receiptTitle').textContent='💳 Hesabı Kapat · Ödeme Al';
   $('receiptBody').innerHTML='';
   $('receiptBody').hidden=true;
-  $('receiptWarning').textContent='Hesap kapatıldı. Şimdi Nakit / Kart / İskonto bölümünden ödeme kaydedebilirsin.';
+  $('receiptWarning').textContent='Ödeme kaydı tamamlanıyor…';
   $('embeddedPayment').hidden=false;
   button.hidden=true;$('receiptCancel').textContent='Kapat';
-  msg(`${receiptSnapshot.name} hesabı kapatıldı. Toplam ${money(receiptSnapshot.total)}.`);
+  // Ödeme doğrulanmadan 'işlem tamamlandı' bildirimi verme.
   fillPayment(id);
   return true;
  }catch(e){msg(e.message,true);$('receiptWarning').textContent='İşlem doğrulanamadı: '+e.message;return false;}
