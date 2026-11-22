@@ -1,0 +1,16 @@
+/* Beta Playstation V64 — kategoriye tıklayınca ürün ve ikili stok kontrolleri */
+.v64-category-opener{cursor:pointer;outline-offset:3px}
+.v64-category-opener:hover .list-title,.v64-category-opener:focus-visible .list-title{text-decoration:underline}
+.v64-category-products{border:1px solid #713340;border-radius:12px;background:#24191f;margin:9px 0 17px;padding:14px}
+.v64-category-products h3{margin:0 0 7px;font-size:1.04rem}
+.v64-tip{font-size:.82rem;opacity:.77;margin:7px 0 13px}
+.v64-product-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 0;border-top:1px solid rgba(255,255,255,.1)}
+.v64-product-name{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}
+.v64-product-name small{opacity:.78}
+.v64-status-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.v64-stock-btn{border-radius:7px;border:1px solid #69424c;padding:8px 12px;background:#30242a;color:#f4e9ed;font:inherit;cursor:pointer;white-space:nowrap}
+.v64-stock-btn.is-active.v64-yes{background:#174932;color:#b2fbd1;border-color:#4a9b71;font-weight:700}
+.v64-stock-btn.is-active.v64-no{background:#622330;color:#ffbccb;border-color:#b74a63;font-weight:700}
+.v64-stock-btn:not(.is-active):hover{background:#4c3039}
+.v64-stock-btn:disabled{opacity:.55;cursor:wait}
+@media(max-width:650px){.v64-product-row{align-items:stretch;flex-direction:column}.v64-status-actions{flex-wrap:wrap}.v64-stock-btn{flex:1}}
