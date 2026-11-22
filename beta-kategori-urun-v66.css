@@ -1,0 +1,9 @@
+/* Beta Playstation V66: kategori içi ürün fotoğrafları ve düzenleme */
+.v66-category-toolbar{display:flex;justify-content:flex-end;margin:10px 0 12px}
+.v66-add-product{padding:9px 13px;min-height:36px}
+.v64-category-products .v64-product-row{justify-content:flex-start}
+.v66-product-media{width:58px;height:58px;flex:0 0 58px;display:flex;align-items:center;justify-content:center;border:1px solid #67414b;border-radius:9px;background:#110f13;font-size:25px;overflow:hidden}
+.v66-product-media img{width:100%;height:100%;object-fit:contain;display:block}
+.v64-category-products .v64-product-name{flex:1}
+.v66-edit-product{padding:8px 10px;font-size:.85rem;white-space:nowrap}
+@media(max-width:750px){.v64-category-products .v64-product-row{flex-wrap:wrap;align-items:center}.v64-category-products .v64-status-actions{width:100%;padding-left:0;justify-content:flex-start;flex-wrap:wrap}.v66-product-media{width:52px;height:52px;flex-basis:52px}}
