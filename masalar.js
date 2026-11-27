@@ -323,15 +323,16 @@ function renderDesktop(){
   if(full)desktopFullCards.set(t.id,full);
   const tile=document.createElement('button');tile.type='button';tile.className='desk-tile '+(s?'desk-busy':'desk-free');
   tile.dataset.tableId=t.id;tile.classList.toggle('bulk-selected',bulkSelected.has(t.id));tile.style.setProperty('--closed-color',validTableColor(t.closed_color));
-  tile.setAttribute('aria-label',t.name+' · '+(s?'Dolu':'Boş')+' · bilgileri aç');
+  const timed=s?.mode==='timed';
+  tile.setAttribute('aria-label',t.name+' · '+(s?'Dolu':'Boş')+(timed?' · Süreli':'')+' · bilgileri aç');
   const kind=['lounge','playstation','computer','billiards'].includes(t.device_type)?t.device_type:'playstation';
   // Sadece süreli açık hesaplar: açılışta ödeme alınmışsa yeşil, alınmamışsa kırmızı nokta.
   // Bu gösterge nakit/kart tahsilat kaydını değiştirmez.
-  const paidMarker=s&&s.mode==='timed'
+  const paidMarker=timed
    ? `<span class="desk-prepaid-dot ${advanceFor(s.id)?'paid':'unpaid'}" title="${advanceFor(s.id)?'Süreli hesap: açılış ücreti alındı':'Süreli hesap: açılış ücreti alınmadı'}" aria-label="${advanceFor(s.id)?'Açılış ücreti alındı':'Açılış ücreti alınmadı'}"></span>`
    : '';
   tile.dataset.deviceKind=kind;
-  tile.innerHTML=`<span class="desk-tile-status">${s?'● DOLU':'● BOŞ'}</span>${paidMarker}<span class="desk-tile-clock" data-tile-time="${esc(t.id)}">${s?'—':'BOŞ'}</span><span class="desk-tile-art">${tableDeviceArt[kind]}</span><span class="desk-tile-name">${esc(t.name)}</span>`;
+  tile.innerHTML=`<span class="desk-tile-status">${timed?'SÜRELİ · ':''}${s?'● DOLU':'● BOŞ'}</span>${paidMarker}<span class="desk-tile-clock" data-tile-time="${esc(t.id)}">${s?'—':'BOŞ'}</span><span class="desk-tile-art">${tableDeviceArt[kind]}</span><span class="desk-tile-name">${esc(t.name)}</span>`;
   // Tek tık: masayı sol panelde seç. Çift tık: boşsa hesap aç, doluysa ödeme ekranı.
   tile.addEventListener('click',e=>{
    if(bulkSuppressClick){e.preventDefault();return;}
