@@ -4,7 +4,7 @@ const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 let selectedTableId=null, currentDeskTab="tables";
 const bulkSelected=new Set();let bulkMode=null,bulkWorking=false,bulkSuppressClick=false;
-const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],advances:[],partials:[],hiddenReports:[],restoreEvents:[],user:null,refreshBusy:false};
+const state={tables:[],rates:[],sessions:[],links:[],orders:[],manualItems:[],products:[],charges:[],segments:[],payments:[],advances:[],partials:[],hiddenReports:[],restoreEvents:[],user:null};
 const money=n=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(Number(n)||0);
 const msg=(s,bad=false)=>{$('notice').textContent=s;$('notice').classList.toggle('error',bad)};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -40,55 +40,78 @@ async function requireAuthorized(){const {data:{user},error}=await db.auth.getUs
 async function init(){if(!db){msg('Supabase config.js bağlantısı eksik.',true);return;}try{if(await requireAuthorized()){setAuth(true);await reload();}else setAuth(false);}catch(e){msg(e.message,true)}}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!db)return;const b=e.currentTarget.querySelector('button');b.disabled=true;try{const r=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(r.error)throw r.error;if(!await requireAuthorized()){await db.auth.signOut();throw Error('Bu hesap yönetici değil.')}setAuth(true);msg('');await reload();}catch(x){msg(x.message,true)}finally{b.disabled=false}});
 $('logout').addEventListener('click',async()=>{await db.auth.signOut();state.user=null;setAuth(false);msg('Çıkış yapıldı.');});
-async function reload(silent=false){
- if(!db||!state.user||state.refreshBusy)return;
- state.refreshBusy=true;
+let snapshotReady=false, snapshotLoading=false;
+let reloadQueue=Promise.resolve();
+function reload(silent=false){
+ const next=reloadQueue.then(()=>loadSnapshot(silent));
+ reloadQueue=next.catch(()=>false);
+ return next;
+}
+async function loadSnapshot(silent){
+ if(!db||!state.user)return false;
+ const snapshot={};
+ snapshotLoading=true;
  try{
   const r=await Promise.all([
    db.from('cafe_tables').select('*').order('sort_order',{ascending:true}).order('created_at',{ascending:true}),
    db.from('cafe_table_rates').select('*'),
-   db.from('cafe_sessions').select('*').order('started_at',{ascending:false}).limit(250),
+   db.from('cafe_sessions').select('*',{count:'exact'}).is('ended_at',null).order('started_at',{ascending:false}),
+   db.from('cafe_sessions').select('*').not('ended_at','is',null).order('started_at',{ascending:false}).limit(250),
    db.from('cafe_charge_catalog').select('id,name,category,price,active,sort_order').order('sort_order',{ascending:true}).order('name',{ascending:true})
   ]);
   for(const x of r)if(x.error)throw x.error;
-  [state.tables,state.rates,state.sessions,state.charges]=r.map(x=>x.data||[]);
-  const interesting=state.sessions.filter(s=>!s.ended_at).concat(state.sessions.filter(s=>s.ended_at).slice(0,15));
+  snapshot.tables=r[0].data||[];snapshot.rates=r[1].data||[];snapshot.charges=r[4].data||[];
+  const openSessions=completeRows(r[2]);
+  const closedIds=new Set((r[3].data||[]).map(session=>session.id));
+  snapshot.sessions=[...openSessions.filter(session=>!closedIds.has(session.id)),...(r[3].data||[])];
+  const interesting=snapshot.sessions.filter(s=>!s.ended_at).concat(snapshot.sessions.filter(s=>s.ended_at).slice(0,15));
   const sessionIds=[...new Set(interesting.map(s=>s.id))];
-  state.links=[];state.orders=[];state.manualItems=[];state.segments=[];state.payments=[];state.advances=[];state.partials=[];
+  snapshot.links=[];snapshot.orders=[];snapshot.manualItems=[];snapshot.segments=[];snapshot.payments=[];snapshot.advances=[];snapshot.partials=[];
   const hidden=await db.from('cafe_report_hidden_v26').select('session_id').limit(1000);
-  if(hidden.error)throw hidden.error;state.hiddenReports=(hidden.data||[]).map(x=>x.session_id);
+  if(hidden.error)throw hidden.error;snapshot.hiddenReports=(hidden.data||[]).map(x=>x.session_id);
   const rev=await db.from('cafe_restore_events_v41').select('session_id,table_id,restored_at,closing_snapshot,payment_snapshot,advance_snapshot').order('restored_at',{ascending:false}).limit(50);
-  if(rev.error)throw rev.error;state.restoreEvents=rev.data||[];
+  if(rev.error)throw rev.error;snapshot.restoreEvents=rev.data||[];
   if(sessionIds.length){
-   const sg=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,short_fee,rounding_step,started_at').in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000);
+   const sg=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,short_fee,rounding_step,started_at',{count:'exact'}).in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000);
    if(sg.error)throw sg.error;
-   state.segments=sg.data||[];
-   const advances=await db.from('cafe_session_advances_v26').select('session_id,amount,method,paid_at').in('session_id',sessionIds);
-   if(advances.error)throw advances.error;state.advances=advances.data||[];
-   const partials=await db.from('cafe_partial_payments_v57').select('id,session_id,amount,method,paid_at').in('session_id',sessionIds).limit(1000);
-   if(partials.error)throw partials.error;state.partials=partials.data||[];
-   const payments=await db.from('cafe_payments').select('session_id,gross_amount,discount_amount,cash_amount,card_amount,paid_at').in('session_id',sessionIds).limit(1000);
+   snapshot.segments=completeRows(sg);
+   const advances=await db.from('cafe_session_advances_v26').select('session_id,amount,method,paid_at',{count:'exact'}).in('session_id',sessionIds);
+   if(advances.error)throw advances.error;snapshot.advances=completeRows(advances);
+   const partials=await db.from('cafe_partial_payments_v57').select('id,session_id,amount,method,paid_at',{count:'exact'}).in('session_id',sessionIds).limit(1000);
+   if(partials.error)throw partials.error;snapshot.partials=completeRows(partials);
+   const payments=await db.from('cafe_payments').select('session_id,gross_amount,discount_amount,cash_amount,card_amount,paid_at',{count:'exact'}).in('session_id',sessionIds).limit(1000);
    if(payments.error)throw payments.error;
-   state.payments=payments.data||[];
-   const manual=await db.from('cafe_manual_items').select('id,session_id,product_id,product_name,qty,unit_price,created_at,voided_at').in('session_id',sessionIds).order('created_at',{ascending:true}).limit(1000);
+   snapshot.payments=completeRows(payments);
+   const manual=await db.from('cafe_manual_items').select('id,session_id,product_id,product_name,qty,unit_price,created_at,voided_at',{count:'exact'}).in('session_id',sessionIds).order('created_at',{ascending:true}).limit(1000);
    if(manual.error)throw manual.error;
-   state.manualItems=manual.data||[];
-   const links=await db.from('cafe_session_orders').select('session_id,order_id').in('session_id',sessionIds).limit(1000);
+   snapshot.manualItems=completeRows(manual);
+   const links=await db.from('cafe_session_orders').select('session_id,order_id',{count:'exact'}).in('session_id',sessionIds).limit(1000);
    if(links.error)throw links.error;
-   state.links=links.data||[];
-   const orderIds=[...new Set(state.links.map(l=>l.order_id))];
+   snapshot.links=completeRows(links);
+   const orderIds=[...new Set(snapshot.links.map(l=>l.order_id))];
    // Supabase sorgusunu makul boyutta tut: her adisyonda en fazla 1000 baglanti.
    for(let i=0;i<orderIds.length;i+=100){
     const or=await db.from('orders')
-     .select('id,loca_code,status,total,created_at,order_items(product_name,qty,unit_price)')
+     .select('id,loca_code,status,total,created_at,order_items(product_name,qty,unit_price)',{count:'exact'})
      .in('id',orderIds.slice(i,i+100));
     if(or.error)throw or.error;
-    state.orders.push(...(or.data||[]));
+    const orders=completeRows(or);
+    if(orders.length!==orderIds.slice(i,i+100).length)throw Error('Bağlı QR siparişleri eksik.');
+    snapshot.orders.push(...orders);
    }
   }
+  Object.assign(state,snapshot);
+  snapshotReady=true;
+  snapshotLoading=false;
   render();if(!silent)msg('Masalar ve siparişler güncellendi.');
- }catch(e){msg('Masa veya sipariş verisi alınamadı: '+e.message,true)}
- finally{state.refreshBusy=false}
+  return true;
+ }catch(e){msg('Masa veya sipariş verisi alınamadı: '+e.message,true);return false}
+ finally{snapshotLoading=false;}
+}
+function completeRows(result){
+ if(result.error)throw result.error;
+ if(!Array.isArray(result.data)||result.count!==result.data.length)throw Error('Hesap kayıtlarının tamamı alınamadı.');
+ return result.data;
 }
 const advanceFor=id=>state.advances.find(x=>x.session_id===id);
 const advanceAmount=id=>Number(advanceFor(id)?.amount||0);
@@ -145,7 +168,6 @@ function render(){const ts=state.tables.filter(t=>t.active),busy=ts.filter(t=>ac
   const total=Number(s.final_total_amount??(Number(s.final_game_amount||0)+Number(s.final_order_amount||0)));
   return `<div class="historyrow recent-event recent-close"><div class="recent-info"><strong>🔴 ${name} — HESAP KAPANDI</strong><div>Kapanış: ${when} · Süre: ${Math.ceil(secs/60)} dakika</div><div><b>TOPLAM: ${money(total)}</b></div></div><div class="history-actions"><button class="secondary" type="button" data-receipt-history="${esc(s.id)}">🧾 Rapor / Adisyon</button>${state.payments.some(p=>p.session_id===s.id)?`<span class="payment-ok">✓ Ödendi</span>`:`<button class="payment-history-btn" type="button" data-pay-history="${esc(s.id)}">💳 Ödeme Al</button>`}<button class="secondary restore-history-btn" type="button" data-restore-session="${esc(s.id)}">↩ Hesabı Geri Al</button></div></div>`;
  }).join(''):'<p class="muted">Henüz hesap açılışı veya kapanışı yok.</p>';
- updateOutstanding();
  document.querySelectorAll('[data-restore-session]').forEach(b=>b.onclick=()=>openRestoreDialog(b.dataset.restoreSession));document.querySelectorAll('[data-receipt-history]').forEach(b=>b.onclick=()=>showReceipt(b.dataset.receiptHistory));document.querySelectorAll('[data-pay-history]').forEach(b=>b.onclick=()=>openPayment(b.dataset.payHistory));renderDesktop();tick();}
 
 // V38: yanlışlıkla kapatılan fakat ödeme kaydı olmayan hesabı güvenli aç.
@@ -519,7 +541,19 @@ $('bulkSubmit').addEventListener('click',async()=>{
  finally{bulkWorking=false;btn.disabled=false;$('bulkCancel').disabled=false;$('bulkX').disabled=false}
 });
 $('bulkDialog').addEventListener('close',()=>{$('bulkSubmit').hidden=false;bulkMode=null;updateBulkSelection()});
-function updateOutstanding(){const live=state.sessions.filter(s=>!s.ended_at);const due=live.reduce((sum,s)=>sum+Math.max(0,gameAmount(s)+productAmount(s.id)-upfrontAmount(s.id)),0);$('outstandingAmount').textContent=money(due);$('outstandingCount').textContent=live.length+' açık hesap · anlık tahmin (5 TL dilimi)';}
+function updateOutstanding(){
+ if(!snapshotReady||snapshotLoading)return;
+ const live=state.sessions.filter(session=>!session.ended_at);
+ const due=live.reduce((sum,session)=>sum+Math.max(
+  0,gameAmount(session)+productAmount(session.id)-upfrontAmount(session.id)
+ ),0);
+ const display=money(due);
+ const amount=$('outstandingAmount');
+ if(amount.textContent!==display)amount.textContent=display;
+ const label=live.length+' açık hesap · anlık tahmin (5 TL dilimi)';
+ const count=$('outstandingCount');
+ if(count.textContent!==label)count.textContent=label;
+}
 function tick(){if($('app').hidden)return;updateOutstanding();for(const s of state.sessions.filter(s=>!s.ended_at)){const e=elapsed(s),a=document.querySelector(`[data-timer="${s.id}"]`),b=document.querySelector(`[data-left="${s.id}"]`),c=document.querySelector(`[data-amount="${s.id}"]`),t=$(`tag-${s.table_id}`);if(a)a.textContent=fmtTime(e);if(b){const left=s.planned_seconds-e;b.textContent=left>0?fmtTime(left):'SÜRE DOLDU · +'+fmtTime(-left);b.style.color=left<=0?'#ff6369':'';if(t){t.classList.toggle('expired',left<=0);t.textContent=left<=0?'⏰ SÜRE DOLDU':'● DOLU'}}if(c)c.textContent=money(gameAmount(s));const total=document.querySelector(`[data-total="${s.id}"]`);if(total)total.textContent=money(gameAmount(s)+productAmount(s.id));}updateDesktopTimers();}
 $('refresh').onclick=()=>reload();setInterval(()=>{if(!$('app').hidden)tick()},1000);setInterval(()=>{if(!$('app').hidden&&!bulkWorking)reload(true)},15000);
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
