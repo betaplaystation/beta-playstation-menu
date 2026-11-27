@@ -33,7 +33,7 @@
 <link rel="stylesheet" href="masalar-v46-fix.css?v=46"/>
 <link rel="stylesheet" href="masalar-v47-duzen.css?v=47"/>
 <link rel="stylesheet" href="masalar-hasansoft-v52.css?v=52">
-<script src="config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><script src="masalar.js?v=71-toplam"></script><script src="masalar-v47-duzen.js?v=47"></script><script src="masa-olcek-v37.js?v=37"></script><script src="masa-siparis-ses.js?v=17"><script src="beta-tek-giris.js?v=48"></script>
+<script src="config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><script src="masalar.js?v=72-toplam"></script><script src="masalar-v47-duzen.js?v=47"></script><script src="masa-olcek-v37.js?v=37"></script><script src="masa-siparis-ses.js?v=17"><script src="beta-tek-giris.js?v=48"></script>
 <link rel="stylesheet" href="masalar-hasansoft-v53.css?v=53">
 <link rel="stylesheet" href="masalar-hasansoft-v54.css?v=54">
 <script src="masalar-hasansoft-v54.js?v=54"></script>
@@ -127,6 +127,39 @@ html[data-masalar-theme="light"] #app #selectedTablePanel .side-total > strong {
   color:#105638 !important;
   font-weight:900;
 }
+/* Five complete rows, including each product's price. */
+#manualDialog #manualCatalog {
+  --catalog-row-height: 86px;
+  --catalog-gap: 6px;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  grid-template-rows: none;
+  grid-auto-rows: var(--catalog-row-height);
+  gap: var(--catalog-gap) !important;
+  height: calc(5 * var(--catalog-row-height) + 4 * var(--catalog-gap)) !important;
+  max-height: calc(5 * var(--catalog-row-height) + 4 * var(--catalog-gap)) !important;
+}
+#manualDialog #manualCatalog .manual-catalog-item {
+  height: var(--catalog-row-height) !important;
+  gap: 3px;
+}
+#manualDialog #manualCatalog .manual-catalog-item strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+#manualDialog #manualCatalog .manual-catalog-item :is(small,b) {
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+#manualDialog #manualCatalog .manual-catalog-item small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+#manualDialog #manualCatalog .manual-catalog-item b { margin-top: auto; }
 </style>
 </body>
 </html>
