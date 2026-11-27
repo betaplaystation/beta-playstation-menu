@@ -55,6 +55,14 @@ async function init(){if(!db){msg('Supabase config.js bağlantısı eksik.',true
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!db)return;const b=e.currentTarget.querySelector('button');b.disabled=true;try{const r=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(r.error)throw r.error;if(!await requireAuthorized()){await db.auth.signOut();throw Error('Bu hesap yönetici değil.')}setAuth(true);msg('');await reload();}catch(x){msg(x.message,true)}finally{b.disabled=false}});
 $('logout').addEventListener('click',async()=>{await db.auth.signOut();state.user=null;setAuth(false);msg('Çıkış yapıldı.');});
 let snapshotReady=false, snapshotLoading=false;
+let sessionRevision=0;
+const openingTables=new Map();
+function applySessionChange(id,session){
+ sessionRevision++;
+ state.sessions=state.sessions.filter(row=>row.id!==id);
+ if(session)state.sessions.unshift(session);
+ render();
+}
 let reloadQueue=Promise.resolve();
 function reload(silent=false){
  const next=reloadQueue.then(()=>loadSnapshot(silent));
@@ -64,6 +72,7 @@ function reload(silent=false){
 async function loadSnapshot(silent){
  if(!db||!state.user)return false;
  const snapshot={};
+ const revision=sessionRevision;
  snapshotLoading=true;
  try{
   const r=await Promise.all([
@@ -81,27 +90,29 @@ async function loadSnapshot(silent){
   const interesting=snapshot.sessions.filter(s=>!s.ended_at).concat(snapshot.sessions.filter(s=>s.ended_at).slice(0,15));
   const sessionIds=[...new Set(interesting.map(s=>s.id))];
   snapshot.links=[];snapshot.orders=[];snapshot.manualItems=[];snapshot.segments=[];snapshot.payments=[];snapshot.advances=[];snapshot.partials=[];
-  const hidden=await db.from('cafe_report_hidden_v26').select('session_id').limit(1000);
-  if(hidden.error)throw hidden.error;snapshot.hiddenReports=(hidden.data||[]).map(x=>x.session_id);
-  const rev=await db.from('cafe_restore_events_v41').select('session_id,table_id,restored_at,closing_snapshot,payment_snapshot,advance_snapshot').order('restored_at',{ascending:false}).limit(50);
-  if(rev.error)throw rev.error;snapshot.restoreEvents=rev.data||[];
+  const [hidden,rev,...details]=await Promise.all([
+   db.from('cafe_report_hidden_v26').select('session_id').limit(1000),
+   db.from('cafe_restore_events_v41').select('session_id,table_id,restored_at,closing_snapshot,payment_snapshot,advance_snapshot').order('restored_at',{ascending:false}).limit(50),
+   ...(sessionIds.length?[
+    db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,short_fee,rounding_step,started_at',{count:'exact'}).in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000),
+    db.from('cafe_session_advances_v26').select('session_id,amount,method,paid_at',{count:'exact'}).in('session_id',sessionIds),
+    db.from('cafe_partial_payments_v57').select('id,session_id,amount,method,paid_at',{count:'exact'}).in('session_id',sessionIds).limit(1000),
+    db.from('cafe_payments').select('session_id,gross_amount,discount_amount,cash_amount,card_amount,paid_at',{count:'exact'}).in('session_id',sessionIds).limit(1000),
+    db.from('cafe_manual_items').select('id,session_id,product_id,product_name,qty,unit_price,created_at,voided_at',{count:'exact'}).in('session_id',sessionIds).order('created_at',{ascending:true}).limit(1000),
+    db.from('cafe_session_orders').select('session_id,order_id',{count:'exact'}).in('session_id',sessionIds).limit(1000)
+   ]:[])
+  ]);
+  if(hidden.error)throw hidden.error;
+  snapshot.hiddenReports=(hidden.data||[]).map(x=>x.session_id);
+  if(rev.error)throw rev.error;
+  snapshot.restoreEvents=rev.data||[];
   if(sessionIds.length){
-   const sg=await db.from('cafe_session_segments').select('session_id,table_id,controllers,hourly_price,short_fee,rounding_step,started_at',{count:'exact'}).in('session_id',sessionIds).order('started_at',{ascending:true}).limit(1000);
-   if(sg.error)throw sg.error;
-   snapshot.segments=completeRows(sg);
-   const advances=await db.from('cafe_session_advances_v26').select('session_id,amount,method,paid_at',{count:'exact'}).in('session_id',sessionIds);
-   if(advances.error)throw advances.error;snapshot.advances=completeRows(advances);
-   const partials=await db.from('cafe_partial_payments_v57').select('id,session_id,amount,method,paid_at',{count:'exact'}).in('session_id',sessionIds).limit(1000);
-   if(partials.error)throw partials.error;snapshot.partials=completeRows(partials);
-   const payments=await db.from('cafe_payments').select('session_id,gross_amount,discount_amount,cash_amount,card_amount,paid_at',{count:'exact'}).in('session_id',sessionIds).limit(1000);
-   if(payments.error)throw payments.error;
-   snapshot.payments=completeRows(payments);
-   const manual=await db.from('cafe_manual_items').select('id,session_id,product_id,product_name,qty,unit_price,created_at,voided_at',{count:'exact'}).in('session_id',sessionIds).order('created_at',{ascending:true}).limit(1000);
-   if(manual.error)throw manual.error;
-   snapshot.manualItems=completeRows(manual);
-   const links=await db.from('cafe_session_orders').select('session_id,order_id',{count:'exact'}).in('session_id',sessionIds).limit(1000);
-   if(links.error)throw links.error;
-   snapshot.links=completeRows(links);
+   snapshot.segments=completeRows(details[0]);
+   snapshot.advances=completeRows(details[1]);
+   snapshot.partials=completeRows(details[2]);
+   snapshot.payments=completeRows(details[3]);
+   snapshot.manualItems=completeRows(details[4]);
+   snapshot.links=completeRows(details[5]);
    const orderIds=[...new Set(snapshot.links.map(l=>l.order_id))];
    // Supabase sorgusunu makul boyutta tut: her adisyonda en fazla 1000 baglanti.
    for(let i=0;i<orderIds.length;i+=100){
@@ -114,6 +125,7 @@ async function loadSnapshot(silent){
     snapshot.orders.push(...orders);
    }
   }
+  if(revision!==sessionRevision)return false;
   Object.assign(state,snapshot);
   snapshotReady=true;
   snapshotLoading=false;
@@ -290,7 +302,17 @@ function updateDesktopTimers(){
  for(const t of state.tables.filter(t=>t.active)){
   const s=active(t),timer=document.querySelector(`[data-tile-time="${t.id}"]`);
   if(!timer)continue;
-  if(!s){timer.textContent='BOŞ';continue;}
+  if(!s){
+   const opening=openingTables.get(t.id);
+   timer.textContent=opening??'BOŞ';
+   const tile=timer.closest('.desk-tile');
+   if(tile&&opening==='DOLU'){
+    tile.classList.remove('desk-free');
+    tile.classList.add('desk-busy');
+    tile.querySelector('.desk-tile-status').textContent='● DOLU';
+   }
+   continue;
+  }
   const seconds=elapsed(s);
   if(s.mode==='timed'){
    const left=Number(s.planned_seconds||0)-seconds;
@@ -588,12 +610,45 @@ $('tableForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.
  const tariffSave=await db.rpc('cafe_save_tariff_rules_v25',{p_table_id:r.data,p_rules:rules});
  if(tariffSave.error)throw tariffSave.error;
  $('tableDialog').close();await reload();msg('Masa, sıralama ve renk kaydedildi.');}catch(x){msg(x.message,true)}finally{b.disabled=false}});
-let currentTable=null;function openSessionDialog(id){const t=state.tables.find(x=>x.id===id);if(!t||active(t))return;currentTable=t;$('sessionForm').reset();$('advancePaid').checked=false;$('advanceMethod').value='card';$('mode').value='unlimited';$('sessionTable').value=id;$('sessionTitle').textContent=t.name+' · Hesap Aç';refreshAdvanceControls();updatePreview();$('sessionDialog').showModal();}
+let currentTable=null;function openSessionDialog(id){const t=state.tables.find(x=>x.id===id);if(!t||active(t)||openingTables.has(id)||$('sessionDialog').open)return;currentTable=t;$('sessionForm').reset();$('advancePaid').checked=false;$('advanceMethod').value='card';$('mode').value='unlimited';$('sessionTable').value=id;$('sessionTitle').textContent=t.name+' · Hesap Aç';refreshAdvanceControls();updatePreview();$('sessionDialog').showModal();}
 for(const id of ['controllers','mode','entryType','entryValue'])$(id).addEventListener(id==='entryValue'?'input':'change',updatePreview);
 function updatePreview(){if(!currentTable)return;const n=Number($('controllers').value),hourly=rate(currentTable.id,n),mode=$('mode').value,typ=$('entryType').value,val=Number($('entryValue').value);$('timedFields').hidden=mode==='unlimited';$('valueLabel').firstChild.textContent=typ==='minutes'?'Dakika':'Tutar (TL)';$('entryValue').step=typ==='minutes'?'1':'0.01';$('entryValue').placeholder=typ==='minutes'?'Ör. 80':'Ör. 250';if(mode==='unlimited'){const tr=tariff(currentTable.id,n);$('calculated').textContent=`Saatlik: ${money(hourly)} · Aç/Kapa: ${money(tr.short_fee||0)} · Yuvarlama: ${money(tr.rounding_step||5)}`;return;}if(hourly<=0){$('calculated').textContent='Bu kol için saatlik fiyatı önce masa ayarlarından belirle.';return;}if(!Number.isFinite(val)||val<=0){$('calculated').textContent=`Saatlik ${money(hourly)} · Dakika veya tutar gir.`;return;}const tr=tariff(currentTable.id,n),seconds=typ==='minutes'?val*60:Math.round(val*3600/hourly),amount=typ==='minutes'?roundToStep(Math.max(hourly*val/60,Number(tr.short_fee||0)),Number(tr.rounding_step)||5):val;$('calculated').textContent=`Seçim: ${n} Kol · Süre: ${fmtTime(seconds)} · Sabit oyun ücreti: ${money(amount)}`;}
 function refreshAdvanceControls(){const timed=$('mode').value==='timed';$('advanceRow').hidden=!timed;$('advanceMethodRow').hidden=!timed||!$('advancePaid').checked;if(!timed)$('advancePaid').checked=false;}
 $('mode').addEventListener('change',refreshAdvanceControls);$('advancePaid').addEventListener('change',refreshAdvanceControls);
-$('sessionForm').addEventListener('submit',async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type=submit]');b.disabled=true;try{const timed=$('mode').value==='timed',val=timed?Number($('entryValue').value):null;if(timed&&(!Number.isFinite(val)||val<=0))throw Error('Pozitif bir dakika veya tutar gir.');const r=await db.rpc('cafe_open_session',{p_table_id:$('sessionTable').value,p_controllers:Number($('controllers').value),p_mode:$('mode').value,p_entry_type:timed?$('entryType').value:null,p_entry_value:val});if(r.error)throw r.error;let advanceWarning='';if(timed&&$('advancePaid').checked){const ar=await db.rpc('cafe_mark_advance_v26',{p_session_id:r.data,p_method:$('advanceMethod').value});if(ar.error)advanceWarning='ÖNEMLİ: Hesap açıldı ama ön ödeme kaydı başarısız: '+ar.error.message;}$('sessionDialog').close();await reload();msg(advanceWarning||'Hesap açıldı, süre başladı.',Boolean(advanceWarning));}catch(x){msg(x.message,true)}finally{b.disabled=false}});
+$('sessionForm').addEventListener('submit',async event=>{
+ event.preventDefault();
+ const button=event.currentTarget.querySelector('[type=submit]');
+ const tableId=$('sessionTable').value,controllers=Number($('controllers').value);
+ const mode=$('mode').value,timed=mode==='timed',entryType=$('entryType').value;
+ const value=timed?Number($('entryValue').value):null;
+ const advanceMethod=timed&&$('advancePaid').checked?$('advanceMethod').value:null;
+ if(button.disabled||openingTables.has(tableId))return;
+ if(timed&&(!Number.isFinite(value)||value<=0)){msg('Pozitif bir dakika veya tutar gir.',true);return;}
+ button.disabled=true;
+ openingTables.set(tableId,'AÇILIYOR…');
+ $('sessionDialog').close();
+ updateDesktopTimers();
+ try{
+  const result=await db.rpc('cafe_open_session',{p_table_id:tableId,p_controllers:controllers,p_mode:mode,
+   p_entry_type:timed?entryType:null,p_entry_value:value});
+  if(result.error)throw result.error;
+  const id=result.data;
+  openingTables.set(tableId,'DOLU');
+  updateDesktopTimers();
+  const advanceRequest=advanceMethod?db.rpc('cafe_mark_advance_v26',{p_session_id:id,p_method:advanceMethod}):null;
+  const fresh=await db.from('cafe_sessions').select('*').eq('id',id).single();
+  if(!fresh.error)applySessionChange(id,fresh.data);
+  const advance=await advanceRequest;
+  if(fresh.error)throw Error('Hesap açıldı, masa bilgisi yenileniyor: '+fresh.error.message);
+  if(advance?.error)msg('Hesap açıldı ancak ön ödeme kaydedilemedi: '+advance.error.message,true);
+ }catch(error){msg(error.message,true);}
+ finally{
+  openingTables.delete(tableId);
+  button.disabled=false;
+  updateDesktopTimers();
+  void reload(true);
+ }
+});
 // V38: müşteri QR ürünlerinden ayrı, çoklu kasa adisyon sepeti.
 let manualSessionId=null,manualPickId=null,manualQueue=new Map(),manualBusy=false;
 const manualCatalogProduct=id=>state.charges.find(p=>p.id===id&&p.active);
@@ -865,6 +920,7 @@ $('receiptPrint').onclick=()=>window.print();
 async function closeReceiptAccount(id){
  const result=await db.rpc('cafe_close_session',{p_session_id:id});
  if(result.error)throw result.error;
+ applySessionChange(id,null);
  try{
   const [session,advances,partials]=await Promise.all([
    db.from('cafe_sessions').select('ended_at,final_total_amount,final_game_amount,final_order_amount').eq('id',id).single(),
@@ -980,6 +1036,9 @@ async function savePaymentRecord(){
    receiptClosed=true;
    receiptSnapshot={...receiptSnapshot,closed:true,ended:bill.ended,total:bill.total,orders:bill.products};
    receiptAccount.upfront=bill.upfront;
+   applySessionChange(id,{...receiptAccount.session,ended_at:bill.ended,
+    final_total_amount:bill.total,final_order_amount:bill.products,
+    final_game_amount:fromCents(cents(bill.total)-cents(bill.products))});
    $('paymentGross').textContent=money(bill.total);
    $('paymentSave').textContent='✓ Ödemeyi Kaydet';
    $('receiptCancel').textContent='Kapat';
@@ -997,6 +1056,10 @@ async function savePaymentRecord(){
   const result=await db.rpc('cafe_record_payment_v26',{p_session_id:id,p_discount_amount:discount,p_cash_amount:cash,p_card_amount:card});
   if(result.error)throw result.error;
   $('receiptDialog').close();
+  sessionRevision++;
+  const paid={session_id:id,gross_amount:paymentTotal(),discount_amount:discount};
+  state.payments=[...state.payments.filter(row=>row.session_id!==id),paid];
+  render();
   setTimeout(()=>reload(true),0);
   return true;
  }catch(error){
