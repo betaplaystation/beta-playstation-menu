@@ -1,5 +1,19 @@
 'use strict';
 const $=id=>document.getElementById(id);
+const themeToggle=$('tableThemeToggle');
+function setTableTheme(theme){
+ document.documentElement.dataset.masalarTheme=theme;
+ themeToggle.textContent=theme==='light'?'Koyu Mod':'Açık Mod';
+ themeToggle.setAttribute('aria-pressed',String(theme==='light'));
+}
+let storedTableTheme='dark';
+try{storedTableTheme=localStorage.getItem('beta-masalar-theme');}catch{}
+setTableTheme(storedTableTheme==='light'?'light':'dark');
+themeToggle.addEventListener('click',()=>{
+ const next=document.documentElement.dataset.masalarTheme==='light'?'dark':'light';
+ setTableTheme(next);
+ try{localStorage.setItem('beta-masalar-theme',next);}catch{}
+});
 const cfg=window.BETA_CONFIG||{};
 const db=window.supabase&&cfg.supabaseUrl&&cfg.supabaseAnonKey?window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey):null;
 let selectedTableId=null, currentDeskTab="tables";
@@ -332,7 +346,7 @@ function renderDesktop(){
    ? `<span class="desk-prepaid-dot ${advanceFor(s.id)?'paid':'unpaid'}" title="${advanceFor(s.id)?'Süreli hesap: açılış ücreti alındı':'Süreli hesap: açılış ücreti alınmadı'}" aria-label="${advanceFor(s.id)?'Açılış ücreti alındı':'Açılış ücreti alınmadı'}"></span>`
    : '';
   tile.dataset.deviceKind=kind;
-  tile.innerHTML=`<span class="desk-tile-status">${timed?'SÜRELİ · ':''}${s?'● DOLU':'● BOŞ'}</span>${paidMarker}<span class="desk-tile-clock" data-tile-time="${esc(t.id)}">${s?'—':'BOŞ'}</span><span class="desk-tile-art">${tableDeviceArt[kind]}</span><span class="desk-tile-name">${esc(t.name)}</span>`;
+  tile.innerHTML=`<span class="desk-tile-status">${timed?'<span class="desk-timed-label">SÜRELİ</span>':''}${s?'● DOLU':'● BOŞ'}</span>${paidMarker}<span class="desk-tile-clock" data-tile-time="${esc(t.id)}">${s?'—':'BOŞ'}</span><span class="desk-tile-art">${tableDeviceArt[kind]}</span><span class="desk-tile-name">${esc(t.name)}</span>`;
   // Tek tık: masayı sol panelde seç. Çift tık: boşsa hesap aç, doluysa ödeme ekranı.
   tile.addEventListener('click',e=>{
    if(bulkSuppressClick){e.preventDefault();return;}
