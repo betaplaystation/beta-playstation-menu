@@ -33,7 +33,7 @@
 <link rel="stylesheet" href="masalar-v46-fix.css?v=46"/>
 <link rel="stylesheet" href="masalar-v47-duzen.css?v=47"/>
 <link rel="stylesheet" href="masalar-hasansoft-v52.css?v=52">
-<script src="config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><script src="masalar.js?v=69-toplam"></script><script src="masalar-v47-duzen.js?v=47"></script><script src="masa-olcek-v37.js?v=37"></script><script src="masa-siparis-ses.js?v=17"><script src="beta-tek-giris.js?v=48"></script>
+<script src="config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script><script src="masalar.js?v=70-toplam"></script><script src="masalar-v47-duzen.js?v=47"></script><script src="masa-olcek-v37.js?v=37"></script><script src="masa-siparis-ses.js?v=17"><script src="beta-tek-giris.js?v=48"></script>
 <link rel="stylesheet" href="masalar-hasansoft-v53.css?v=53">
 <link rel="stylesheet" href="masalar-hasansoft-v54.css?v=54">
 <script src="masalar-hasansoft-v54.js?v=54"></script>
@@ -101,25 +101,18 @@ html[data-masalar-theme="light"] .outstanding {
   color:#194e2c !important;
 }
 html[data-masalar-theme="light"] .outstanding :is(small,span) {color:#285b39 !important;}
-html[data-masalar-theme="light"] #tableIconsArea #cards .desk-tile.desk-busy {
-  background:#dff5e5 !important;
-  border-color:#459365 !important;
+html[data-masalar-theme="light"] #app #tableIconsArea,
+html[data-masalar-theme="light"] #app #tableIconsArea #cards {
+  background-color:#fff !important;
 }
-html[data-masalar-theme="light"] #tableIconsArea #cards .desk-tile.desk-free {
-  background:#fce9eb !important;
-  border-color:#be6571 !important;
+html[data-masalar-theme="light"] #app #tableIconsArea {
+  background:#fff !important;
+  border-color:#cfd8e1 !important;
 }
-html[data-masalar-theme="light"] #tableIconsArea #cards .desk-tile-clock {
-  color:#202a35 !important;
+html[data-masalar-theme="light"] #app #tableIconsArea #cards.grid-editing {
+  background-image:linear-gradient(#23354b22 1px,transparent 1px),
+    linear-gradient(90deg,#23354b22 1px,transparent 1px) !important;
 }
-html[data-masalar-theme="light"] #tableIconsArea #cards .desk-tile-clock.expired {color:#a51c2d !important;}
-html[data-masalar-theme="light"] #tableIconsArea #cards .desk-tile .desk-tile-status {color:#8e2735 !important;}
-html[data-masalar-theme="light"] #tableIconsArea #cards .desk-tile.desk-busy .desk-tile-status {color:#215d37 !important;}
-html[data-masalar-theme="light"] #tableIconsArea #cards .desk-tile-name {
-  background:#f5f7fa !important;
-  color:#1b2530 !important;
-}
-html[data-masalar-theme="light"] #tableIconsArea #cards .desk-tile.is-selected {outline-color:#255e9a !important;}
 </style>
 </body>
 </html>
